@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 1,
+	"id": "simple-worldmap",
+	"version": "${version}",
+	"name": "Simple World Map",
+	"description": "A lightweight client-side world map with waypoints.",
+	"authors": ["Riccardo Palleschi"],
+	"contact": {
+		"sources": "https://github.com/riccardopll/simple-worldmap",
+		"issues": "https://github.com/riccardopll/simple-worldmap/issues"
+	},
+	"license": "MIT",
+	"icon": "assets/simple-worldmap/icon.png",
+	"environment": "client",
+	"entrypoints": {
+		"client": ["io.github.riccardopll.simpleworldmap.SimpleWorldMap"]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
