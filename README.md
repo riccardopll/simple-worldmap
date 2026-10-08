@@ -57,9 +57,10 @@ Each region file stores one byte per block (the vanilla map color index and shad
 
 ## Build
 
-Requires JDK 25.
+Requires JDK 25. With [SDKMAN!](https://sdkman.io), `.sdkmanrc` selects it:
 
 ```sh
+sdk env install
 ./gradlew build
 ```
 
