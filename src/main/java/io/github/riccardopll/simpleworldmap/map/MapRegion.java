@@ -1,5 +1,7 @@
 package io.github.riccardopll.simpleworldmap.map;
 
+import java.util.Arrays;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
@@ -14,6 +16,7 @@ public final class MapRegion {
 	public static final int SHIFT = 9;
 	public static final int SIZE = 1 << SHIFT;
 	public static final int AREA = SIZE * SIZE;
+	static final int CHUNKS = 32 * 32;
 
 	private static final int[] PALETTE = new int[256];
 
@@ -33,6 +36,8 @@ public final class MapRegion {
 	private @Nullable DynamicTexture texture;
 	private @Nullable Identifier textureId;
 	private long lastUsed;
+	private int changes;
+	private final int[] chunkChanges = new int[CHUNKS];
 
 	MapRegion(int x, int z) {
 		this.x = x;
@@ -60,21 +65,44 @@ public final class MapRegion {
 		if (changed) {
 			dirty = true;
 			textureDirty = true;
+			chunkChanges[((chunkZ & 31) << 5) | (chunkX & 31)] = ++changes;
 		}
 	}
 
 	/** Fills in blocks that were not sampled this session with data read from disk. */
 	void merge(RegionFiles.@Nullable Data stored) {
 		if (stored != null) {
+			boolean changed = false;
 			for (int i = 0; i < AREA; i++) {
 				if (colors[i] == 0 && stored.colors()[i] != 0) {
 					colors[i] = stored.colors()[i];
 					setTint(i, stored.tints() == null ? 0 : stored.tints()[i]);
-					textureDirty = true;
+					changed = true;
 				}
+			}
+			if (changed) {
+				textureDirty = true;
+				Arrays.fill(chunkChanges, ++changes);
 			}
 		}
 		loaded = true;
+	}
+
+	byte[] colors() {
+		return colors;
+	}
+
+	int @Nullable [] tints() {
+		return tints;
+	}
+
+	/** Counts block changes; {@link #chunkChanges} holds the count at each chunk's latest change, indexed by z * 32 + x. */
+	int changes() {
+		return changes;
+	}
+
+	int[] chunkChanges() {
+		return chunkChanges;
 	}
 
 	private int tintAt(int index) {
@@ -127,21 +155,24 @@ public final class MapRegion {
 		}
 		if (texture == null) {
 			texture = new DynamicTexture(() -> "Simple World Map region " + x + "," + z, SIZE, SIZE, true);
-			textureId = Identifier.fromNamespaceAndPath("simple-worldmap", "region/" + regionKeyPath());
+			textureId = Identifier.fromNamespaceAndPath("simple-worldmap", "region/" + keyPath(x, z));
 			Minecraft.getInstance().getTextureManager().register(textureId, texture);
 		}
 		NativeImage pixels = texture.getPixels();
 		for (int pz = 0; pz < SIZE; pz++) {
 			int row = pz * SIZE;
 			for (int px = 0; px < SIZE; px++) {
-				int tint = tintAt(row + px);
-				int packed = colors[row + px] & 0xFF;
-				pixels.setPixel(px, pz, tint == 0 ? PALETTE[packed] : tinted(packed, tint));
+				pixels.setPixel(px, pz, color(colors[row + px] & 0xFF, tintAt(row + px)));
 			}
 		}
 		texture.upload();
 		textureDirty = false;
 		return textureId;
+	}
+
+	/** The ARGB color of a block, transparent for unexplored blocks. Safe on any thread. */
+	static int color(int packed, int tint) {
+		return tint == 0 ? PALETTE[packed] : tinted(packed, tint);
 	}
 
 	/**
@@ -154,7 +185,7 @@ public final class MapRegion {
 		return ARGB.scaleRGB(ARGB.opaque(tint), MapColor.Brightness.byId(packed & 3).modifier * percent / 100);
 	}
 
-	private String regionKeyPath() {
+	static String keyPath(int x, int z) {
 		return (x < 0 ? "n" + -x : String.valueOf(x)) + "_" + (z < 0 ? "n" + -z : String.valueOf(z));
 	}
 
