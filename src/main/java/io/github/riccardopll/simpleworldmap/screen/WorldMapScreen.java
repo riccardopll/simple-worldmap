@@ -6,15 +6,18 @@ import io.github.riccardopll.simpleworldmap.map.MapRegion;
 import io.github.riccardopll.simpleworldmap.map.MapSession;
 import io.github.riccardopll.simpleworldmap.waypoint.Waypoint;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.PlayerFaceExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.player.PlayerModelPart;
 import net.minecraft.world.level.levelgen.Heightmap;
 import org.joml.Matrix3x2fStack;
 import org.jspecify.annotations.Nullable;
@@ -28,6 +31,8 @@ public final class WorldMapScreen extends Screen {
 	private static final int TEXT = 0xFFFFFFFF;
 	private static final int MUTED = 0xFFB0B0B0;
 	private static final int HOVER_RADIUS = 6;
+	private static final int HEAD_SIZE = 8;
+	private static final float ZOOM_STEP = 1.2F;
 
 	private static float lastScale = 2.0F;
 	private static long frame;
@@ -78,7 +83,7 @@ public final class WorldMapScreen extends Screen {
 		frame++;
 		drawRegions(graphics);
 		drawWaypoints(graphics, mouseX, mouseY);
-		drawPlayer(graphics, partialTick);
+		drawPlayers(graphics, partialTick);
 		drawOverlay(graphics, mouseX, mouseY);
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
 		session.releaseIdleTextures(frame);
@@ -144,26 +149,44 @@ public final class WorldMapScreen extends Screen {
 		}
 	}
 
-	private void drawPlayer(GuiGraphicsExtractor graphics, float partialTick) {
-		LocalPlayer player = minecraft.player;
-		if (player == null || player.level() != session.level) {
+	private void drawPlayers(GuiGraphicsExtractor graphics, float partialTick) {
+		LocalPlayer self = minecraft.player;
+		if (self == null || self.level() != session.level) {
 			return;
 		}
+		for (AbstractClientPlayer other : session.level.players()) {
+			if (other == self || other.isInvisibleTo(self)) {
+				continue;
+			}
+			float x = screenX(Mth.lerp(partialTick, other.xo, other.getX()));
+			float y = screenY(Mth.lerp(partialTick, other.zo, other.getZ()));
+			if (x < -50 || y < -20 || x > width + 50 || y > height + 20) {
+				continue;
+			}
+			drawHead(graphics, other, x, y, 0xFF000000);
+			graphics.centeredText(font, other.getName(), Math.round(x), Math.round(y) - 16, TEXT);
+		}
+
+		float x = screenX(Mth.lerp(partialTick, self.xo, self.getX()));
+		float y = screenY(Mth.lerp(partialTick, self.zo, self.getZ()));
 		Matrix3x2fStack pose = graphics.pose();
 		pose.pushMatrix();
-		pose.translate(screenX(Mth.lerp(partialTick, player.xo, player.getX())), screenY(Mth.lerp(partialTick, player.zo, player.getZ())));
-		pose.rotate((player.getViewYRot(partialTick) + 180.0F) * Mth.DEG_TO_RAD);
-		drawArrow(graphics, 1, 0xFF000000);
-		drawArrow(graphics, 0, 0xFFFFFFFF);
+		pose.translate(x, y);
+		pose.rotate((self.getViewYRot(partialTick) + 180.0F) * Mth.DEG_TO_RAD);
+		graphics.fill(-2, -11, 2, -6, 0xFF000000);
+		graphics.fill(-1, -10, 1, -7, 0xFFFFFFFF);
 		pose.popMatrix();
+		drawHead(graphics, self, x, y, 0xFFFFFFFF);
 	}
 
-	/** An upward-pointing triangle centered on the origin, grown by {@code outline} pixels on each side. */
-	private static void drawArrow(GuiGraphicsExtractor graphics, int outline, int color) {
-		for (int row = -outline; row < 9 + outline; row++) {
-			int half = Math.max(0, row) / 2 + outline;
-			graphics.fill(-half - 1, row - 5, half + 1, row - 4, color);
-		}
+	private static void drawHead(GuiGraphicsExtractor graphics, AbstractClientPlayer player, float x, float y, int border) {
+		Matrix3x2fStack pose = graphics.pose();
+		pose.pushMatrix();
+		pose.translate(x, y);
+		graphics.fill(-HEAD_SIZE / 2 - 1, -HEAD_SIZE / 2 - 1, HEAD_SIZE / 2 + 1, HEAD_SIZE / 2 + 1, border);
+		PlayerFaceExtractor.extractRenderState(graphics, player.getSkin().body().texturePath(), -HEAD_SIZE / 2, -HEAD_SIZE / 2, HEAD_SIZE,
+			player.isModelPartShown(PlayerModelPart.HAT), false, -1);
+		pose.popMatrix();
 	}
 
 	private void drawOverlay(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
@@ -218,18 +241,27 @@ public final class WorldMapScreen extends Screen {
 		if (scrollY == 0) {
 			return false;
 		}
+		zoom(scrollY, x, y);
+		return true;
+	}
+
+	/** Zooms by {@code steps} while keeping the world point under the given screen position fixed. */
+	private void zoom(double steps, double x, double y) {
 		double anchorX = worldX(x);
 		double anchorZ = worldZ(y);
-		scale = Mth.clamp(scale * (float) Math.pow(1.2, scrollY), MIN_SCALE, MAX_SCALE);
+		scale = Mth.clamp(scale * (float) Math.pow(ZOOM_STEP, steps), MIN_SCALE, MAX_SCALE);
 		centerX = anchorX - (x - width / 2.0) / scale;
 		centerZ = anchorZ - (y - height / 2.0) / scale;
-		return true;
 	}
 
 	@Override
 	public boolean keyPressed(KeyEvent event) {
 		if (SimpleWorldMap.openMapKey.matches(event)) {
 			onClose();
+			return true;
+		}
+		if (SimpleWorldMap.zoomInKey.matches(event) || SimpleWorldMap.zoomOutKey.matches(event)) {
+			zoom(SimpleWorldMap.zoomInKey.matches(event) ? 1 : -1, width / 2.0, height / 2.0);
 			return true;
 		}
 		if (event.key() == InputConstants.KEY_SPACE) {

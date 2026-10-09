@@ -4,8 +4,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Stream;
 
+import com.mojang.authlib.GameProfile;
 import com.mojang.blaze3d.platform.InputConstants;
 import io.github.riccardopll.simpleworldmap.SimpleWorldMap;
 import io.github.riccardopll.simpleworldmap.screen.WaypointScreen;
@@ -17,6 +19,7 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestDedicatedServerConnection;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestDedicatedServerContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
+import net.minecraft.client.player.RemotePlayer;
 
 public final class SimpleWorldMapClientGameTest implements FabricClientGameTest {
 	@Override
@@ -125,6 +128,26 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 			input.releaseMouse(InputConstants.MOUSE_BUTTON_LEFT);
 			context.waitTicks(5);
 			context.takeScreenshot("swm-terrain-map-dragged");
+
+			input.pressKey(InputConstants.KEY_SPACE);
+			for (int i = 0; i < 4; i++) {
+				input.pressKey(SimpleWorldMap.zoomOutKey);
+			}
+			context.waitTicks(5);
+			context.takeScreenshot("swm-terrain-map-key-zoomed-out");
+			for (int i = 0; i < 6; i++) {
+				input.pressKey(SimpleWorldMap.zoomInKey);
+			}
+
+			context.runOnClient(mc -> {
+				RemotePlayer other = new RemotePlayer(mc.level, new GameProfile(UUID.randomUUID(), "Steve"));
+				other.setId(Integer.MAX_VALUE - 1);
+				other.snapTo(mc.player.getX() + 12, mc.player.getY(), mc.player.getZ() + 6, 0, 0);
+				mc.level.addEntity(other);
+			});
+			context.waitTicks(5);
+			context.takeScreenshot("swm-terrain-map-other-player");
+			check(context.computeOnClient(mc -> mc.level.players().size()) == 2, "remote player present in client level");
 			input.pressKey(SimpleWorldMap.openMapKey);
 			context.waitForScreen(null);
 		}
