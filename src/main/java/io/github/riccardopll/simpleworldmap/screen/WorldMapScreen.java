@@ -167,17 +167,6 @@ public final class WorldMapScreen extends Screen {
 	}
 
 	private void drawOverlay(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
-		LocalPlayer player = minecraft.player;
-		String dimension = session.level.dimension().identifier().toString();
-		graphics.fill(0, 0, width, 14, PANEL);
-		graphics.text(font, title, 4, 3, TEXT);
-		graphics.text(font, dimension, 8 + font.width(title), 3, MUTED);
-		if (player != null) {
-			BlockPos pos = player.blockPosition();
-			String text = Component.translatable("simple-worldmap.map.player", pos.getX(), pos.getY(), pos.getZ()).getString();
-			graphics.text(font, text, width - font.width(text) - 4, 3, TEXT);
-		}
-
 		Component hint = Component.translatable("simple-worldmap.map.hint");
 		String cursor = Component.translatable("simple-worldmap.map.cursor", Mth.floor(worldX(mouseX)), Mth.floor(worldZ(mouseY))).getString();
 		graphics.fill(0, height - 14, width, height, PANEL);

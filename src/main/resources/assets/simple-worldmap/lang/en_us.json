@@ -3,7 +3,6 @@
 	"key.simple-worldmap.open_map": "Open World Map",
 	"key.simple-worldmap.add_waypoint": "Add Waypoint Here",
 	"simple-worldmap.map.title": "World Map",
-	"simple-worldmap.map.player": "Player: %s, %s, %s",
 	"simple-worldmap.map.cursor": "X: %s  Z: %s",
 	"simple-worldmap.map.hint": "Drag: pan · Scroll: zoom · Right-click: add/edit waypoint · Space: center",
 	"simple-worldmap.map.waypoint_tooltip": "%s (%s, %s, %s)",
