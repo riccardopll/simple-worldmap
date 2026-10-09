@@ -8,6 +8,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -17,10 +19,14 @@ import io.github.riccardopll.simpleworldmap.map.RegionFiles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** The waypoints of one dimension of one world, stored as {@code waypoints.json}. Main thread only. */
+/**
+ * The waypoints of one dimension of one world, stored as {@code waypoints.json}. Main thread only.
+ * Reads and writes share one background thread, so a load always sees the latest save.
+ */
 public final class WaypointStore {
 	private static final Logger LOGGER = LoggerFactory.getLogger("simple-worldmap");
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+	private static final ExecutorService IO = RegionFiles.ioThread("Simple World Map waypoints");
 
 	private final Path file;
 	private final List<Waypoint> waypoints = new ArrayList<>();
@@ -31,21 +37,33 @@ public final class WaypointStore {
 
 	public static WaypointStore load(Path dir) {
 		WaypointStore store = new WaypointStore(dir.resolve("waypoints.json"));
-		if (Files.isRegularFile(store.file)) {
-			try (Reader reader = Files.newBufferedReader(store.file, StandardCharsets.UTF_8)) {
-				Waypoint[] stored = GSON.fromJson(reader, Waypoint[].class);
-				if (stored != null) {
-					for (Waypoint waypoint : stored) {
-						if (waypoint != null && waypoint.name() != null) {
-							store.waypoints.add(waypoint);
-						}
+		store.waypoints.addAll(CompletableFuture.supplyAsync(() -> read(store.file), IO).join());
+		return store;
+	}
+
+	private static List<Waypoint> read(Path file) {
+		List<Waypoint> result = new ArrayList<>();
+		if (!Files.isRegularFile(file)) {
+			return result;
+		}
+		try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+			Waypoint[] stored = GSON.fromJson(reader, Waypoint[].class);
+			if (stored != null) {
+				for (Waypoint waypoint : stored) {
+					if (waypoint != null && waypoint.name() != null) {
+						result.add(waypoint);
 					}
 				}
-			} catch (IOException | JsonParseException e) {
-				LOGGER.warn("Could not read waypoints from {}", store.file, e);
 			}
+		} catch (IOException | JsonParseException e) {
+			LOGGER.warn("Could not read waypoints from {}", file, e);
 		}
-		return store;
+		return result;
+	}
+
+	/** Waits for queued waypoint writes; called when the game closes. */
+	public static void shutdown() {
+		RegionFiles.shutdown(IO);
 	}
 
 	public List<Waypoint> all() {
@@ -76,7 +94,7 @@ public final class WaypointStore {
 	private void save() {
 		String json = GSON.toJson(waypoints.toArray(Waypoint[]::new));
 		Path target = file;
-		RegionFiles.IO.execute(() -> {
+		IO.execute(() -> {
 			Path temp = target.resolveSibling(target.getFileName() + ".tmp");
 			try {
 				Files.createDirectories(target.getParent());

@@ -21,6 +21,8 @@ import net.minecraft.core.GlobalPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.Nullable;
+import org.lwjgl.sdl.SDLKeyboard;
+import org.lwjgl.sdl.SDLKeycode;
 
 public final class SimpleWorldMap implements ClientModInitializer {
 	public static final String MOD_ID = "simple-worldmap";
@@ -30,6 +32,8 @@ public final class SimpleWorldMap implements ClientModInitializer {
 	private static final int SAVE_INTERVAL_TICKS = 600;
 
 	public static KeyMapping openMapKey;
+	public static KeyMapping zoomInKey;
+	public static KeyMapping zoomOutKey;
 
 	private static @Nullable MapSession session;
 	private static long ticks;
@@ -41,6 +45,15 @@ public final class SimpleWorldMap implements ClientModInitializer {
 		KeyMapping.Category category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath(MOD_ID, "general"));
 		openMapKey = KeyMappingHelper.registerKeyMapping(
 			new KeyMapping("key.simple-worldmap.open_map", InputConstants.KEY_M, category));
+		zoomInKey = KeyMappingHelper.registerKeyMapping(
+			new KeyMapping("key.simple-worldmap.zoom_in", InputConstants.KEY_EQUALS, category));
+		zoomOutKey = KeyMappingHelper.registerKeyMapping(
+			new KeyMapping("key.simple-worldmap.zoom_out", InputConstants.KEY_MINUS, category));
+		ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
+			useLayoutDefault(zoomInKey, SDLKeycode.SDLK_PLUS);
+			useLayoutDefault(zoomOutKey, SDLKeycode.SDLK_MINUS);
+			KeyMapping.resetMapping();
+		});
 
 		ClientChunkEvents.CHUNK_LOAD.register((level, chunk) -> {
 			MapSession current = session(level);
@@ -54,7 +67,34 @@ public final class SimpleWorldMap implements ClientModInitializer {
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
 			closeSession();
 			RegionFiles.shutdown();
+			WaypointStore.shutdown();
 		});
+	}
+
+	/**
+	 * Key bindings store physical key positions, and the keyboard layout is only known once the window
+	 * exists, so the default becomes the key that types {@code character} on the current layout. A binding
+	 * still at its registered default follows along; one the player changed is left alone.
+	 */
+	private static void useLayoutDefault(KeyMapping mapping, int character) {
+		int scancode = SDLKeyboard.SDL_GetScancodeFromKey(character, null);
+		if (scancode == 0) {
+			return;
+		}
+		InputConstants.Key key = InputConstants.Type.KEYBOARD.getOrCreate(scancode);
+		boolean wasDefault = mapping.isDefault();
+		mapping.defaultKey = key;
+		if (wasDefault) {
+			mapping.setKey(key);
+		}
+	}
+
+	/** Zoom keys act only inside the map screen, so presses made in game are discarded. */
+	private static void drainZoomClicks() {
+		while (zoomInKey.consumeClick()) {
+		}
+		while (zoomOutKey.consumeClick()) {
+		}
 	}
 
 	/** The session for the given level, starting a new one after joining a world or changing dimension. */
@@ -103,6 +143,7 @@ public final class SimpleWorldMap implements ClientModInitializer {
 			deathKnown = false;
 			while (openMapKey.consumeClick()) {
 			}
+			drainZoomClicks();
 			return;
 		}
 
@@ -115,6 +156,8 @@ public final class SimpleWorldMap implements ClientModInitializer {
 				client.gui.setScreen(new WorldMapScreen(current));
 			}
 		}
+
+		drainZoomClicks();
 
 		int playerChunkX = player.blockPosition().getX() >> 4;
 		int playerChunkZ = player.blockPosition().getZ() >> 4;

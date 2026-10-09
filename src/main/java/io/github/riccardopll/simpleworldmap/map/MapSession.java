@@ -128,13 +128,19 @@ public final class MapSession {
 		}
 	}
 
+	/**
+	 * Writes a dirty region. A region still loading from disk holds only blocks sampled since, so its
+	 * stored data is read back on the IO thread and the new samples are laid over it.
+	 */
 	private void save(MapRegion region) {
-		if (region.isLoaded() && region.isDirty()) {
-			RegionFiles.Data snapshot = region.snapshotForSave();
-			Path file = RegionFiles.file(dir, region.x, region.z);
-			onDisk.add(RegionFiles.key(region.x, region.z));
-			RegionFiles.IO.execute(() -> RegionFiles.write(file, snapshot));
+		if (!region.isDirty()) {
+			return;
 		}
+		RegionFiles.Data snapshot = region.snapshotForSave();
+		boolean partial = !region.isLoaded();
+		Path file = RegionFiles.file(dir, region.x, region.z);
+		onDisk.add(RegionFiles.key(region.x, region.z));
+		RegionFiles.IO.execute(() -> RegionFiles.write(file, partial ? RegionFiles.overlay(RegionFiles.read(file), snapshot) : snapshot));
 	}
 
 	/** Drops regions more than one region away from the player once they are saved. */

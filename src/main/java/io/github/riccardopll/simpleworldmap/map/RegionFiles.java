@@ -35,18 +35,23 @@ public final class RegionFiles {
 	private static final int VERSION = 2;
 	private static final Pattern NAME = Pattern.compile("r\\.(-?\\d+)\\.(-?\\d+)\\.swm");
 
-	public static final ExecutorService IO = Executors.newSingleThreadExecutor(runnable -> {
-		Thread thread = new Thread(runnable, "Simple World Map IO");
-		thread.setDaemon(true);
-		thread.setPriority(Thread.MIN_PRIORITY);
-		return thread;
-	});
+	static final ExecutorService IO = ioThread("Simple World Map IO");
 
 	/** Colors and tints of a region; {@code tints} is null when no block is tinted. */
 	public record Data(byte[] colors, int @Nullable [] tints) {
 	}
 
 	private RegionFiles() {
+	}
+
+	/** A low-priority single background thread, so the tasks it runs stay in order. */
+	public static ExecutorService ioThread(String name) {
+		return Executors.newSingleThreadExecutor(runnable -> {
+			Thread thread = new Thread(runnable, name);
+			thread.setDaemon(true);
+			thread.setPriority(Thread.MIN_PRIORITY);
+			return thread;
+		});
 	}
 
 	public static Path file(Path dir, int x, int z) {
@@ -82,6 +87,24 @@ public final class RegionFiles {
 
 	public static int keyZ(long key) {
 		return (int) key;
+	}
+
+	/** Returns {@code top}, with blocks it does not have filled in from {@code base}. */
+	static Data overlay(@Nullable Data base, Data top) {
+		if (base == null) {
+			return top;
+		}
+		byte[] colors = base.colors().clone();
+		int[] tints = base.tints() != null ? base.tints().clone() : top.tints() != null ? new int[MapRegion.AREA] : null;
+		for (int i = 0; i < MapRegion.AREA; i++) {
+			if (top.colors()[i] != 0) {
+				colors[i] = top.colors()[i];
+				if (tints != null) {
+					tints[i] = top.tints() == null ? 0 : top.tints()[i];
+				}
+			}
+		}
+		return new Data(colors, tints);
 	}
 
 	/** Returns the stored region, or null if the file is missing or unreadable. */
@@ -156,12 +179,17 @@ public final class RegionFiles {
 		}
 	}
 
-	/** Waits for queued writes; called when the game closes. */
+	/** Waits for queued region writes; called when the game closes. */
 	public static void shutdown() {
-		IO.shutdown();
+		shutdown(IO);
+	}
+
+	/** Stops an executor after its queued tasks finish, waiting up to 15 seconds. */
+	public static void shutdown(ExecutorService executor) {
+		executor.shutdown();
 		try {
-			if (!IO.awaitTermination(15, TimeUnit.SECONDS)) {
-				LOGGER.warn("Timed out while saving map regions");
+			if (!executor.awaitTermination(15, TimeUnit.SECONDS)) {
+				LOGGER.warn("Timed out while saving map data");
 			}
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();

@@ -1,6 +1,8 @@
 {
 	"key.category.simple-worldmap.general": "Simple World Map",
 	"key.simple-worldmap.open_map": "Open World Map",
+	"key.simple-worldmap.zoom_in": "Zoom Map In",
+	"key.simple-worldmap.zoom_out": "Zoom Map Out",
 	"simple-worldmap.map.title": "World Map",
 	"simple-worldmap.map.cursor": "X: %s  Z: %s",
 	"simple-worldmap.map.waypoint_tooltip": "%s (%s, %s, %s)",

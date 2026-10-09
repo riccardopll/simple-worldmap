@@ -104,10 +104,6 @@ public final class MapRegion {
 		return new RegionFiles.Data(colors.clone(), tints == null ? null : tints.clone());
 	}
 
-	public int colorAt(int localX, int localZ) {
-		return colors[localZ * SIZE + localX] & 0xFF;
-	}
-
 	boolean hasTexture() {
 		return texture != null;
 	}

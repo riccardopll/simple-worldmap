@@ -20,17 +20,29 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestDedicatedServerConnection;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestDedicatedServerContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.screens.DeathScreen;
+import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.gui.screens.options.controls.KeyBindsScreen;
 import net.minecraft.client.player.RemotePlayer;
-import org.lwjgl.sdl.SDLEvents;
-import org.lwjgl.sdl.SDLScancode;
-import org.lwjgl.sdl.SDL_Event;
+import org.lwjgl.sdl.SDLKeyboard;
 
 public final class SimpleWorldMapClientGameTest implements FabricClientGameTest {
 	@Override
 	public void runTest(ClientGameTestContext context) {
 		TestInput input = context.getInput();
 		Path mapRoot = context.computeOnClient(mc -> mc.gameDirectory.toPath().resolve("simple-worldmap"));
+
+		// The test framework restores options saved before the window existed, undoing the layout defaults.
+		context.runOnClient(mc -> {
+			SimpleWorldMap.zoomInKey.setKey(SimpleWorldMap.zoomInKey.getDefaultKey());
+			SimpleWorldMap.zoomOutKey.setKey(SimpleWorldMap.zoomOutKey.getDefaultKey());
+			KeyMapping.resetMapping();
+		});
+		int zoomInCharacter = context.computeOnClient(mc -> typedBy(SimpleWorldMap.zoomInKey));
+		int zoomOutCharacter = context.computeOnClient(mc -> typedBy(SimpleWorldMap.zoomOutKey));
+		check(zoomInCharacter == '+' || zoomInCharacter == '=', "zoom in defaults to the + key, types " + Character.toString(zoomInCharacter));
+		check(zoomOutCharacter == '-', "zoom out defaults to the - key, types " + Character.toString(zoomOutCharacter));
 		deleteRecursively(mapRoot);
 
 		try (TestSingleplayerContext world = context.worldBuilder().create()) {
@@ -155,14 +167,18 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 			context.takeScreenshot("swm-terrain-map-dragged");
 
 			input.pressKey(InputConstants.KEY_SPACE);
+			float before = mapScale(context);
 			for (int i = 0; i < 4; i++) {
-				input.pressKey(SDLScancode.SDL_SCANCODE_KP_MINUS);
+				input.pressKey(SimpleWorldMap.zoomOutKey);
 			}
 			context.waitTicks(5);
+			float after = mapScale(context);
+			check(after < before * 0.5F, "zoom out key: " + before + " -> " + after);
 			context.takeScreenshot("swm-terrain-map-key-zoomed-out");
 			for (int i = 0; i < 6; i++) {
-				input.pressKey(SDLScancode.SDL_SCANCODE_KP_PLUS);
+				input.pressKey(SimpleWorldMap.zoomInKey);
 			}
+			check(mapScale(context) > after * 2, "zoom in key");
 
 			context.runOnClient(mc -> {
 				RemotePlayer other = new RemotePlayer(mc.level, new GameProfile(UUID.randomUUID(), "Steve"));
@@ -173,17 +189,6 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 			context.waitTicks(5);
 			context.takeScreenshot("swm-terrain-map-other-player");
 			check(context.computeOnClient(mc -> mc.level.players().size()) == 2, "remote player present in client level");
-
-			float before = mapScale(context);
-			context.runOnClient(mc -> {
-				for (int i = 0; i < 5; i++) {
-					pushPinch(0.8F);
-				}
-			});
-			context.waitTicks(5);
-			float after = mapScale(context);
-			check(after < before * 0.5F, "pinch zooms out: " + before + " -> " + after);
-			context.takeScreenshot("swm-terrain-map-pinched-out");
 			input.pressKey(SimpleWorldMap.openMapKey);
 			context.waitForScreen(null);
 		}
@@ -191,6 +196,19 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 		context.waitTicks(20);
 		Path server = singleDir(mapRoot.resolve("multiplayer")).resolve("minecraft").resolve("overworld");
 		check(countRegions(server) > 0, "server region files written in " + server);
+
+		context.runOnClient(mc -> mc.gui.setScreen(new KeyBindsScreen(null, mc.options)));
+		context.waitForScreen(KeyBindsScreen.class);
+		input.setCursorPos(100, 100);
+		input.scroll(-1000);
+		context.waitTicks(5);
+		context.takeScreenshot("swm-key-binds");
+		context.runOnClient(mc -> mc.gui.setScreen(new TitleScreen()));
+		context.waitForScreen(TitleScreen.class);
+	}
+
+	private static int typedBy(KeyMapping mapping) {
+		return SDLKeyboard.SDL_GetKeyFromScancode(mapping.getDefaultKey().getValue(), (short) 0, false);
 	}
 
 	private static List<Waypoint> waypoints(ClientGameTestContext context) {
@@ -212,14 +230,6 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 			return Files.readString(file);
 		} catch (IOException e) {
 			throw new AssertionError("cannot read " + file, e);
-		}
-	}
-
-	private static void pushPinch(float factor) {
-		try (SDL_Event event = SDL_Event.calloc()) {
-			event.type(SDLEvents.SDL_EVENT_PINCH_UPDATE);
-			event.pinch().scale(factor);
-			check(SDLEvents.SDL_PushEvent(event), "pinch event pushed");
 		}
 	}
 
