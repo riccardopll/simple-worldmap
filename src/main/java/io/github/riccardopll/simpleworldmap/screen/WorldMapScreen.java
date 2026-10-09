@@ -65,6 +65,7 @@ public final class WorldMapScreen extends Screen {
 	private @Nullable Waypoint hovered;
 	private boolean panning;
 	private boolean watchingPinch;
+	private boolean openingDialog;
 
 	public WorldMapScreen(MapSession session) {
 		super(Component.translatable("simple-worldmap.map.title"));
@@ -231,11 +232,11 @@ public final class WorldMapScreen extends Screen {
 		}
 		if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
 			if (hovered != null) {
-				minecraft.gui.setScreen(WaypointScreen.edit(this, session, hovered));
+				openDialog(WaypointScreen.edit(this, session, hovered));
 			} else {
 				int x = Mth.floor(worldX(event.x()));
 				int z = Mth.floor(worldZ(event.y()));
-				minecraft.gui.setScreen(WaypointScreen.create(this, session, new BlockPos(x, estimateY(x, z), z)));
+				openDialog(WaypointScreen.create(this, session, new BlockPos(x, estimateY(x, z), z)));
 			}
 			return true;
 		}
@@ -347,7 +348,16 @@ public final class WorldMapScreen extends Screen {
 			watchingPinch = false;
 		}
 		lastScale = scale;
-		session.releaseTextures();
+		if (!openingDialog) {
+			session.releaseTextures();
+		}
+		openingDialog = false;
+	}
+
+	/** Opens a dialog drawn over the map, keeping the map's textures for when it returns. */
+	private void openDialog(Screen dialog) {
+		openingDialog = true;
+		minecraft.gui.setScreen(dialog);
 	}
 
 	@Override

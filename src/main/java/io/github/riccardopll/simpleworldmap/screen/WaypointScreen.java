@@ -22,6 +22,7 @@ public final class WaypointScreen extends Screen {
 	private static final int ERROR = 0xFFFF5555;
 	private static final int VALID = 0xFFE0E0E0;
 	private static final int MAX_NAME_LENGTH = 32;
+	private static final int DIM = 0xA0000000;
 
 	private final @Nullable Screen parent;
 	private final MapSession session;
@@ -153,6 +154,20 @@ public final class WaypointScreen extends Screen {
 			session.waypoints.remove(existing);
 		}
 		onClose();
+	}
+
+	@Override
+	public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+		if (parent == null) {
+			super.extractBackground(graphics, mouseX, mouseY, partialTick);
+			return;
+		}
+		if (parent.width != width || parent.height != height) {
+			parent.init(width, height);
+		}
+		parent.extractBackground(graphics, -1, -1, partialTick);
+		parent.extractRenderState(graphics, -1, -1, partialTick);
+		graphics.fill(0, 0, width, height, DIM);
 	}
 
 	@Override
