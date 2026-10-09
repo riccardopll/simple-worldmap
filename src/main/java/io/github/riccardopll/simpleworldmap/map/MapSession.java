@@ -152,7 +152,7 @@ public final class MapSession {
 			cache.put(key, created);
 			if (source == null) {
 				RegionFiles.IO.execute(() -> {
-					int[] pixels = RegionFiles.readLod(dir, regionX, regionZ, level);
+					int[] pixels = RegionFiles.readLod(RegionFiles.file(dir, regionX, regionZ), level);
 					Minecraft.getInstance().execute(() -> {
 						if (!closed && pixels != null && cache.get(key) == created) {
 							created.fill(pixels);
@@ -183,8 +183,9 @@ public final class MapSession {
 		}
 		RegionFiles.Data snapshot = region.snapshotForSave();
 		boolean partial = !region.isLoaded();
+		Path file = RegionFiles.file(dir, region.x, region.z);
 		onDisk.add(RegionFiles.key(region.x, region.z));
-		RegionFiles.IO.execute(() -> RegionFiles.save(dir, region.x, region.z, snapshot, partial));
+		RegionFiles.IO.execute(() -> RegionFiles.save(file, snapshot, partial));
 	}
 
 	/** Drops regions more than one region away from the player once they are saved. */

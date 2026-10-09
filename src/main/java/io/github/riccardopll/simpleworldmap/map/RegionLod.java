@@ -10,8 +10,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * One low-detail level of a region, where each pixel averages a square of blocks: 4x4 at level 1, 16x16 at
- * level 2. Its pixels come from the full region while that is loaded, otherwise from the region's low-detail
- * file. Main thread only, except the static helpers.
+ * level 2. Its pixels come from the full region while that is loaded, otherwise from the start of the
+ * region file. Main thread only, except the static helpers.
  */
 public final class RegionLod {
 	public static final int LEVELS = 2;

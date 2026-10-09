@@ -5,8 +5,8 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,7 +42,7 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 		TestInput input = context.getInput();
 		Path mapRoot = context.computeOnClient(mc -> mc.gameDirectory.toPath().resolve("simple-worldmap"));
 		deleteRecursively(mapRoot);
-		context.runOnClient(mc -> checkLowDetailFiles(mapRoot.resolve("lod-test")));
+		context.runOnClient(mc -> checkRegionFile(mapRoot.resolve("format-test")));
 
 		try (TestSingleplayerContext world = context.worldBuilder().create()) {
 			world.getConnection().waitForChunksRender();
@@ -134,7 +134,7 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 		context.waitTicks(20);
 		Path overworld = singleDir(mapRoot.resolve("singleplayer")).resolve("minecraft").resolve("overworld");
 		check(countRegions(overworld) > 0, "overworld region files written in " + overworld);
-		checkLowDetailFilesWritten(overworld);
+		checkLowDetailStored(overworld);
 		check(Files.isRegularFile(overworld.resolve("waypoints.json")), "waypoints saved");
 		check(countRegions(overworld.resolveSibling("the_nether")) > 0, "nether region files written");
 		check(readString(overworld.resolveSibling("the_nether").resolve("waypoints.json")).contains("\"Death\""), "nether death waypoint saved");
@@ -230,7 +230,7 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 					drawn += session.cachedRegion(x, z) == null && lod != null && field(lod, "textureId") != null ? 1 : 0;
 				}
 				return drawn;
-			}) == explored.size(), explored.size() + " stored regions drawn from low-detail files without loading full detail");
+			}) == explored.size(), explored.size() + " stored regions drawn from their low-detail levels without loading full detail");
 			System.out.println("[simple-worldmap test] textures at minimum zoom: " + textureReport(context));
 			world.getServer().runCommand("execute as @p at @s run tp @s ~3000 200 ~");
 			context.waitFor(mc -> (mc.player.getBlockX() >> 9) - home[0] > 4);
@@ -253,7 +253,7 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 				MapSession session = SimpleWorldMap.session(mc.level);
 				RegionLod lod = session.cachedLod(home[0], home[1], RegionLod.LEVELS);
 				return session.cachedRegion(home[0], home[1]) == null && lod != null && field(lod, "textureId") != null;
-			}), "first area drawn from its low-detail file without loading full detail");
+			}), "first area drawn from its stored low-detail level without loading full detail");
 			input.pressKey(SimpleWorldMap.openMapKey);
 			context.waitForScreen(null);
 			world.getServer().runCommand("execute as @p at @s run tp @s ~-3000 200 ~");
@@ -269,7 +269,7 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 		}
 
 		context.waitTicks(20);
-		checkLowDetailFilesWritten(terrain[0]);
+		checkLowDetailStored(terrain[0]);
 
 		context.waitTicks(20);
 		Path server = singleDir(mapRoot.resolve("multiplayer")).resolve("minecraft").resolve("overworld");
@@ -320,43 +320,40 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 	}
 
 	/**
-	 * Saves a partly loaded region over a stored one and checks that its low-detail image has the blocks of both,
-	 * then checks that a missing or outdated low-detail file is rebuilt from the region.
+	 * Saves a partly loaded region over a stored one and checks that the low-detail levels and the blocks
+	 * read back from the file have both.
 	 */
-	private static void checkLowDetailFiles(Path dir) {
-		Class<?>[] save = {Path.class, int.class, int.class, RegionFiles.Data.class, boolean.class};
-		Class<?>[] readLod = {Path.class, int.class, int.class, int.class};
-		try {
-			byte[] west = new byte[512 * 512];
-			byte[] east = new byte[512 * 512];
-			for (int i = 0; i < west.length; i++) {
-				((i & 511) < 256 ? west : east)[i] = MapColor.GRASS.getPackedId(MapColor.Brightness.NORMAL);
-			}
-			invoke("save", save, dir, 0, 0, new RegionFiles.Data(west, null), false);
-			invoke("save", save, dir, 0, 0, new RegionFiles.Data(east, null), true);
-			int[] level1 = (int[]) invoke("readLod", readLod, dir, 0, 0, 1);
-			check(ARGB.alpha(level1[0]) == 255 && ARGB.alpha(level1[127]) == 255 && level1[0] == level1[127],
-				"low-detail file of a partly loaded region has stored and new blocks");
-			Files.delete(RegionFiles.lodFile(dir, 0, 0));
-			int[] level2 = (int[]) invoke("readLod", readLod, dir, 0, 0, 2);
-			check(level2.length == 32 * 32 && ARGB.alpha(level2[0]) == 255 && ARGB.alpha(level2[31]) == 255
-				&& Files.isRegularFile(RegionFiles.lodFile(dir, 0, 0)), "missing low-detail file rebuilt");
-			invoke("write", new Class<?>[] {Path.class, RegionFiles.Data.class}, RegionFiles.file(dir, 0, 0), new RegionFiles.Data(east, null));
-			Files.setLastModifiedTime(RegionFiles.lodFile(dir, 0, 0), FileTime.fromMillis(0));
-			level1 = (int[]) invoke("readLod", readLod, dir, 0, 0, 1);
-			check(level1[0] == 0 && ARGB.alpha(level1[127]) == 255, "low-detail file older than its region rebuilt");
-			deleteRecursively(dir);
-		} catch (IOException e) {
-			throw new AssertionError(e);
+	private static void checkRegionFile(Path dir) {
+		Path file = RegionFiles.file(dir, 0, 0);
+		Class<?>[] save = {Path.class, RegionFiles.Data.class, boolean.class};
+		Class<?>[] readLod = {Path.class, int.class};
+		byte[] west = new byte[512 * 512];
+		byte[] east = new byte[512 * 512];
+		for (int i = 0; i < west.length; i++) {
+			((i & 511) < 256 ? west : east)[i] = MapColor.GRASS.getPackedId(MapColor.Brightness.NORMAL);
 		}
+		invoke("save", save, file, new RegionFiles.Data(west, null), false);
+		invoke("save", save, file, new RegionFiles.Data(east, null), true);
+		int[] level1 = (int[]) invoke("readLod", readLod, file, 1);
+		int[] level2 = (int[]) invoke("readLod", readLod, file, 2);
+		RegionFiles.Data data = (RegionFiles.Data) invoke("read", new Class<?>[] {Path.class}, file);
+		check(level1.length == 128 * 128 && ARGB.alpha(level1[0]) == 255 && level1[0] == level1[127]
+			&& level2.length == 32 * 32 && ARGB.alpha(level2[0]) == 255 && level2[0] == level2[31],
+			"low-detail levels of a partly loaded region have stored and new blocks");
+		check(data.colors()[0] == west[0] && data.colors()[511] == east[511], "blocks read back after the low-detail levels");
+		deleteRecursively(dir);
 	}
 
-	private static void checkLowDetailFilesWritten(Path dir) {
+	private static void checkLowDetailStored(Path dir) {
 		try (Stream<Path> files = Files.list(dir)) {
-			List<String> missing = files.map(path -> path.getFileName().toString())
-				.filter(name -> name.endsWith(".swm") && !Files.isRegularFile(dir.resolve(name.replace(".swm", ".swl"))))
+			List<String> missing = files.filter(path -> path.getFileName().toString().endsWith(".swm"))
+				.filter(path -> {
+					int[] pixels = (int[]) invoke("readLod", new Class<?>[] {Path.class, int.class}, path, RegionLod.LEVELS);
+					return pixels == null || Arrays.stream(pixels).noneMatch(pixel -> ARGB.alpha(pixel) > 0);
+				})
+				.map(path -> path.getFileName().toString())
 				.toList();
-			check(countRegions(dir) > 0 && missing.isEmpty(), "low-detail files written in " + dir + ", missing for " + missing);
+			check(countRegions(dir) > 0 && missing.isEmpty(), "low-detail levels stored in " + dir + ", missing in " + missing);
 		} catch (IOException e) {
 			throw new AssertionError("cannot list " + dir, e);
 		}
@@ -382,8 +379,8 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 					int band = Math.clamp((int) Math.floor((height + 1.3) * 1.6), 0, palette.length - 1);
 					colors[i] = palette[band].getPackedId(MapColor.Brightness.byId(Math.floorMod((int) (height * 40), 3)));
 				}
-				invoke("save", new Class<?>[] {Path.class, int.class, int.class, RegionFiles.Data.class, boolean.class},
-					dir, regionX, regionZ, new RegionFiles.Data(colors, null), false);
+				invoke("write", new Class<?>[] {Path.class, RegionFiles.Data.class},
+					RegionFiles.file(dir, regionX, regionZ), new RegionFiles.Data(colors, null));
 				keys.add(RegionFiles.key(regionX, regionZ));
 			}
 		}
