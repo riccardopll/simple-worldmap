@@ -27,6 +27,9 @@ public final class RegionLod {
 	/** The {@link MapRegion#changes()} of {@link #source} shown by the texture, or -1 before it is synced. */
 	private int syncedChanges = -1;
 	private long lastUsed;
+	private boolean read;
+	/** Set once the texture is freed and the level dropped; also read by the IO thread to skip its read. */
+	private volatile boolean released;
 
 	RegionLod(int x, int z, int level) {
 		this.x = x;
@@ -87,6 +90,19 @@ public final class RegionLod {
 				syncedChanges = -1;
 			}
 		}
+	}
+
+	/** Whether the pixels have to come from disk and no read has been queued yet. */
+	boolean needsRead() {
+		return source == null && !read && syncedChanges < 0;
+	}
+
+	void markRead() {
+		read = true;
+	}
+
+	boolean isReleased() {
+		return released;
 	}
 
 	/** Pixels read from disk; ignored once the texture has been synced with a loaded region. */
@@ -163,6 +179,7 @@ public final class RegionLod {
 	}
 
 	void release() {
+		released = true;
 		if (texture != null) {
 			Minecraft.getInstance().getTextureManager().release(textureId);
 			texture = null;

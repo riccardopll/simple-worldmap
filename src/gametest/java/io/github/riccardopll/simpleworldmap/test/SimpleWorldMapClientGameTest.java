@@ -256,6 +256,9 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 			}), "first area drawn from its stored low-detail level without loading full detail");
 			input.pressKey(SimpleWorldMap.openMapKey);
 			context.waitForScreen(null);
+			context.waitTicks(10);
+			check(context.computeOnClient(mc -> (int) field(SimpleWorldMap.session(mc.level), "queuedLodReads")) == 0,
+				"queued low-detail reads finish or are skipped after the map closes");
 			world.getServer().runCommand("execute as @p at @s run tp @s ~-3000 200 ~");
 			context.waitFor(mc -> mc.player.getBlockX() >> 9 == home[0]);
 			world.getConnection().waitForChunksRender();

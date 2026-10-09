@@ -27,6 +27,8 @@ import org.jspecify.annotations.Nullable;
 public final class MapSession {
 	private static final long SAMPLE_BUDGET_NANOS = 2_000_000L;
 	private static final int TEXTURE_IDLE_FRAMES = 120;
+	/** Low-detail reads queued at once, so region saves on the same thread never wait behind a whole viewport. */
+	private static final int MAX_QUEUED_LOD_READS = 32;
 
 	public final ClientLevel level;
 	public final WaypointStore waypoints;
@@ -42,6 +44,7 @@ public final class MapSession {
 	private final byte[] sample = new byte[256];
 	private final int[] tintSample = new int[256];
 	private boolean closed;
+	private int queuedLodReads;
 
 	public MapSession(Minecraft minecraft, ClientLevel level) {
 		this.level = level;
@@ -148,22 +151,29 @@ public final class MapSession {
 			if (source == null && !onDisk.contains(key)) {
 				return null;
 			}
-			RegionLod created = new RegionLod(regionX, regionZ, level);
-			cache.put(key, created);
-			if (source == null) {
-				RegionFiles.IO.execute(() -> {
-					int[] pixels = RegionFiles.readLod(RegionFiles.file(dir, regionX, regionZ), level);
-					Minecraft.getInstance().execute(() -> {
-						if (!closed && pixels != null && cache.get(key) == created) {
-							created.fill(pixels);
-						}
-					});
-				});
-			}
-			lod = created;
+			lod = new RegionLod(regionX, regionZ, level);
+			cache.put(key, lod);
 		}
 		lod.setSource(source);
+		if (lod.needsRead() && queuedLodReads < MAX_QUEUED_LOD_READS) {
+			read(lod, RegionFiles.file(dir, regionX, regionZ));
+		}
 		return lod;
+	}
+
+	/** Reads a low-detail level from disk, skipping the read if the level is released before its turn. */
+	private void read(RegionLod lod, Path file) {
+		lod.markRead();
+		queuedLodReads++;
+		RegionFiles.IO.execute(() -> {
+			int[] pixels = lod.isReleased() ? null : RegionFiles.readLod(file, lod.level);
+			Minecraft.getInstance().execute(() -> {
+				queuedLodReads--;
+				if (pixels != null && !lod.isReleased()) {
+					lod.fill(pixels);
+				}
+			});
+		});
 	}
 
 	/** Returns a low-detail level of the region if it is in memory, without reading it. */
