@@ -31,6 +31,7 @@ public final class MapSession {
 	private final LinkedHashSet<Long> queue = new LinkedHashSet<>();
 	private final ChunkSampler sampler = new ChunkSampler();
 	private final byte[] sample = new byte[256];
+	private final int[] tintSample = new int[256];
 	private boolean closed;
 
 	public MapSession(Minecraft minecraft, ClientLevel level) {
@@ -79,8 +80,8 @@ public final class MapSession {
 			int chunkZ = RegionFiles.keyZ(key);
 			LevelChunk chunk = level.getChunkSource().getChunk(chunkX, chunkZ, ChunkStatus.FULL, false);
 			if (chunk != null) {
-				sampler.sample(level, chunk, sample);
-				region(chunkX >> 5, chunkZ >> 5, true).putChunk(chunkX, chunkZ, sample);
+				sampler.sample(level, chunk, sample, tintSample);
+				region(chunkX >> 5, chunkZ >> 5, true).putChunk(chunkX, chunkZ, sample, tintSample);
 			}
 		}
 	}
@@ -101,7 +102,7 @@ public final class MapSession {
 		if (stored) {
 			Path file = RegionFiles.file(dir, regionX, regionZ);
 			RegionFiles.IO.execute(() -> {
-				byte[] data = RegionFiles.read(file);
+				RegionFiles.Data data = RegionFiles.read(file);
 				Minecraft.getInstance().execute(() -> {
 					if (!closed && regions.get(key) == created) {
 						created.merge(data);
@@ -122,7 +123,7 @@ public final class MapSession {
 
 	private void save(MapRegion region) {
 		if (region.isLoaded() && region.isDirty()) {
-			byte[] snapshot = region.snapshotForSave();
+			RegionFiles.Data snapshot = region.snapshotForSave();
 			Path file = RegionFiles.file(dir, region.x, region.z);
 			onDisk.add(RegionFiles.key(region.x, region.z));
 			RegionFiles.IO.execute(() -> RegionFiles.write(file, snapshot));

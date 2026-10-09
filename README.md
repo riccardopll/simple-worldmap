@@ -6,7 +6,7 @@ It records the terrain you explore and shows it on a full-screen map with waypoi
 
 ## Features
 
-- Full-screen map of explored terrain, colored like vanilla map items (one pixel per block, with height and water-depth shading).
+- Full-screen map of explored terrain, colored like vanilla map items (one pixel per block, with height and water-depth shading), with biome colors for grass, leaves and water.
 - Pan by dragging, zoom with the scroll wheel, trackpad pinch or keys, coordinates under the cursor.
 - Player heads: yours, and other players within the server's tracking range with their names.
 - Waypoints with a name and color, stored per world or server and per dimension.
@@ -48,7 +48,7 @@ Map data lives in the game directory, separate from world saves:
     waypoints.json
 ```
 
-Each region file stores one byte per block (the vanilla map color index and shade), compressed with deflate. A fully explored region usually takes a few tens of kilobytes. To reset the map for a world, delete its folder while the game is closed.
+Each region file stores one byte per block (the vanilla map color index and shade) plus the biome or block tint of grass, leaves, plants and water, compressed with deflate. A fully explored region usually takes a few tens of kilobytes. To reset the map for a world, delete its folder while the game is closed.
 
 ## How it works
 
@@ -74,7 +74,8 @@ Other tasks:
 
 ## Limitations
 
-- Colors use the vanilla map palette, so there are no biome-tinted grass or water colors.
+- Areas explored before biome colors were added keep their old colors until those chunks are loaded again.
+- Plants without their own tint, such as flowers, take the grass color of their biome.
 - The Nether view uses one fixed layer: the first floor below the roof. There is no cave or layer selector.
 - Servers behind a proxy (BungeeCord, Velocity) that share one address store every backend world in the same folder.
 - Waypoints are not shown in the world (no beacon beams or HUD).

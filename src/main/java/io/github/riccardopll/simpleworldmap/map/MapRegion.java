@@ -3,11 +3,13 @@ package io.github.riccardopll.simpleworldmap.map;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.ARGB;
 import net.minecraft.world.level.material.MapColor;
 
 import com.mojang.blaze3d.platform.NativeImage;
+import org.jspecify.annotations.Nullable;
 
-/** A 512x512 block area (32x32 chunks) stored as one byte per block. Main thread only. */
+/** A 512x512 block area (32x32 chunks) stored as one color byte per block, plus tints once any block has one. Main thread only. */
 public final class MapRegion {
 	public static final int SHIFT = 9;
 	public static final int SIZE = 1 << SHIFT;
@@ -24,6 +26,7 @@ public final class MapRegion {
 	public final int x;
 	public final int z;
 	private final byte[] colors = new byte[AREA];
+	private int @Nullable [] tints;
 	private boolean loaded;
 	private boolean dirty;
 	private boolean textureDirty = true;
@@ -37,7 +40,7 @@ public final class MapRegion {
 	}
 
 	/** Copies a 16x16 chunk sample into the region. */
-	void putChunk(int chunkX, int chunkZ, byte[] sample) {
+	void putChunk(int chunkX, int chunkZ, byte[] sample, int[] tintSample) {
 		int baseX = (chunkX & 31) << 4;
 		int baseZ = (chunkZ & 31) << 4;
 		boolean changed = false;
@@ -45,8 +48,11 @@ public final class MapRegion {
 			int row = (baseZ + dz) * SIZE + baseX;
 			for (int dx = 0; dx < 16; dx++) {
 				byte value = sample[dz * 16 + dx];
-				if (value != 0 && colors[row + dx] != value) {
-					colors[row + dx] = value;
+				int tint = tintSample[dz * 16 + dx];
+				int index = row + dx;
+				if (value != 0 && (colors[index] != value || tintAt(index) != tint)) {
+					colors[index] = value;
+					setTint(index, tint);
 					changed = true;
 				}
 			}
@@ -58,16 +64,31 @@ public final class MapRegion {
 	}
 
 	/** Fills in blocks that were not sampled this session with data read from disk. */
-	void merge(byte[] stored) {
+	void merge(RegionFiles.@Nullable Data stored) {
 		if (stored != null) {
 			for (int i = 0; i < AREA; i++) {
-				if (colors[i] == 0 && stored[i] != 0) {
-					colors[i] = stored[i];
+				if (colors[i] == 0 && stored.colors()[i] != 0) {
+					colors[i] = stored.colors()[i];
+					setTint(i, stored.tints() == null ? 0 : stored.tints()[i]);
 					textureDirty = true;
 				}
 			}
 		}
 		loaded = true;
+	}
+
+	private int tintAt(int index) {
+		return tints == null ? 0 : tints[index];
+	}
+
+	private void setTint(int index, int tint) {
+		if (tints == null) {
+			if (tint == 0) {
+				return;
+			}
+			tints = new int[AREA];
+		}
+		tints[index] = tint;
 	}
 
 	public boolean isLoaded() {
@@ -78,9 +99,9 @@ public final class MapRegion {
 		return dirty;
 	}
 
-	byte[] snapshotForSave() {
+	RegionFiles.Data snapshotForSave() {
 		dirty = false;
-		return colors.clone();
+		return new RegionFiles.Data(colors.clone(), tints == null ? null : tints.clone());
 	}
 
 	public int colorAt(int localX, int localZ) {
@@ -117,12 +138,24 @@ public final class MapRegion {
 		for (int pz = 0; pz < SIZE; pz++) {
 			int row = pz * SIZE;
 			for (int px = 0; px < SIZE; px++) {
-				pixels.setPixel(px, pz, PALETTE[colors[row + px] & 0xFF]);
+				int tint = tintAt(row + px);
+				int packed = colors[row + px] & 0xFF;
+				pixels.setPixel(px, pz, tint == 0 ? PALETTE[packed] : tinted(packed, tint));
 			}
 		}
 		texture.upload();
 		textureDirty = false;
 		return textureId;
+	}
+
+	/**
+	 * Shades a tint with the map brightness of {@code packed}. Water keeps its tint; grass and
+	 * foliage tints are darkened so plains biomes stay close to the untinted vanilla palette.
+	 */
+	private static int tinted(int packed, int tint) {
+		int id = packed >> 2;
+		int percent = id == MapColor.WATER.id ? 100 : id == MapColor.GRASS.id ? 90 : 70;
+		return ARGB.scaleRGB(ARGB.opaque(tint), MapColor.Brightness.byId(packed & 3).modifier * percent / 100);
 	}
 
 	private String regionKeyPath() {

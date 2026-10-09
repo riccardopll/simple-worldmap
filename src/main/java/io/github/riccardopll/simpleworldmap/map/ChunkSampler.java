@@ -1,8 +1,13 @@
 package io.github.riccardopll.simpleworldmap.map;
 
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.color.block.BlockColors;
+import net.minecraft.client.color.block.BlockTintSource;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.BiomeColors;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
@@ -12,7 +17,8 @@ import net.minecraft.world.level.material.MapColor;
 
 /**
  * Turns a loaded chunk into 16x16 vanilla map color ids (MapColor id << 2 | brightness),
- * using the same height and water-depth shading as vanilla map items at scale 1:1.
+ * using the same height and water-depth shading as vanilla map items at scale 1:1,
+ * plus the biome or block tint of each surface block.
  */
 public final class ChunkSampler {
 	private static final int NO_HEIGHT = Integer.MIN_VALUE;
@@ -20,11 +26,16 @@ public final class ChunkSampler {
 	private final BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
 	private final BlockPos.MutableBlockPos below = new BlockPos.MutableBlockPos();
 	private final int[] northHeights = new int[16];
+	private final BlockColors blockColors = Minecraft.getInstance().getBlockColors();
 	private BlockState state;
 	private int waterDepth;
+	private int tint;
 
-	/** Writes 256 packed colors into {@code out}, indexed by {@code localZ * 16 + localX}. */
-	public void sample(ClientLevel level, LevelChunk chunk, byte[] out) {
+	/**
+	 * Writes 256 packed colors into {@code out} and their tints into {@code tints},
+	 * both indexed by {@code localZ * 16 + localX}. A tint is 0xRRGGBB, or 0 for untinted blocks.
+	 */
+	public void sample(ClientLevel level, LevelChunk chunk, byte[] out, int[] tints) {
 		int minX = chunk.getPos().getMinBlockX();
 		int minZ = chunk.getPos().getMinBlockZ();
 		boolean ceiling = level.dimensionType().hasCeiling();
@@ -40,7 +51,9 @@ public final class ChunkSampler {
 				int bx = minX + x;
 				int bz = minZ + z;
 				int height = surface(level, chunk, bx, bz, ceiling);
+				tint = 0;
 				out[z * 16 + x] = height == NO_HEIGHT ? 0 : color(level, bx, bz, height, previous);
+				tints[z * 16 + x] = tint;
 				previous = height;
 			}
 		}
@@ -51,6 +64,7 @@ public final class ChunkSampler {
 		if (color == MapColor.NONE) {
 			return 0;
 		}
+		tint = tint(level, color);
 		int parity = (bx + bz) & 1;
 		MapColor.Brightness brightness;
 		if (color == MapColor.WATER) {
@@ -62,6 +76,26 @@ public final class ChunkSampler {
 			brightness = diff > 0.6 ? MapColor.Brightness.HIGH : diff < -0.6 ? MapColor.Brightness.LOW : MapColor.Brightness.NORMAL;
 		}
 		return color.getPackedId(brightness);
+	}
+
+	/** The tint of the surface block at {@link #pos} as 0xRRGGBB, or 0 if it has none. */
+	private int tint(ClientLevel level, MapColor color) {
+		int rgb;
+		if (color == MapColor.WATER && state.getFluidState().is(FluidTags.WATER)) {
+			rgb = BiomeColors.getAverageWaterColor(level, pos);
+		} else {
+			BlockTintSource source = blockColors.getTintSource(state, 0);
+			if (source != null) {
+				rgb = source.colorInWorld(state, level, pos);
+			} else if (color == MapColor.PLANT) {
+				// Flowers and bushes have no tint but would show as bright specks among tinted grass.
+				rgb = BiomeColors.getAverageGrassColor(level, pos);
+			} else {
+				return 0;
+			}
+		}
+		rgb &= 0xFFFFFF;
+		return rgb == 0xFFFFFF ? 0 : Math.max(rgb, 1);
 	}
 
 	/**

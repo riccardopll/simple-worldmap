@@ -19,17 +19,20 @@ import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.InflaterInputStream;
 
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Region file format: 4-byte magic, 1-byte version, then 512*512 color bytes compressed with deflate.
- * All disk access runs on one background thread so reads and writes of a file stay ordered.
+ * Region file format: 4-byte magic, 1-byte version, then a deflate stream holding 512*512 color bytes.
+ * Since version 2 the stream continues with a byte that is 1 when tints follow, then the red, green and
+ * blue planes of the tints, 512*512 bytes each. All disk access runs on one background thread so reads
+ * and writes of a file stay ordered.
  */
 public final class RegionFiles {
 	private static final Logger LOGGER = LoggerFactory.getLogger("simple-worldmap");
 	private static final int MAGIC = 0x53574D50;
-	private static final int VERSION = 1;
+	private static final int VERSION = 2;
 	private static final Pattern NAME = Pattern.compile("r\\.(-?\\d+)\\.(-?\\d+)\\.swm");
 
 	public static final ExecutorService IO = Executors.newSingleThreadExecutor(runnable -> {
@@ -38,6 +41,10 @@ public final class RegionFiles {
 		thread.setPriority(Thread.MIN_PRIORITY);
 		return thread;
 	});
+
+	/** Colors and tints of a region; {@code tints} is null when no block is tinted. */
+	public record Data(byte[] colors, int @Nullable [] tints) {
+	}
 
 	private RegionFiles() {
 	}
@@ -77,21 +84,33 @@ public final class RegionFiles {
 		return (int) key;
 	}
 
-	/** Returns the stored colors, or null if the file is missing or unreadable. */
-	static byte[] read(Path file) {
+	/** Returns the stored region, or null if the file is missing or unreadable. */
+	static @Nullable Data read(Path file) {
 		if (!Files.isRegularFile(file)) {
 			return null;
 		}
 		try (InputStream raw = Files.newInputStream(file);
 			DataInputStream header = new DataInputStream(raw)) {
-			if (header.readInt() != MAGIC || header.readUnsignedByte() != VERSION) {
+			int version = header.readInt() == MAGIC ? header.readUnsignedByte() : -1;
+			if (version < 1 || version > VERSION) {
 				LOGGER.warn("Ignoring map region with unknown format: {}", file);
 				return null;
 			}
 			try (DataInputStream body = new DataInputStream(new InflaterInputStream(raw))) {
 				byte[] colors = new byte[MapRegion.AREA];
 				body.readFully(colors);
-				return colors;
+				if (version < 2 || body.readUnsignedByte() == 0) {
+					return new Data(colors, null);
+				}
+				byte[] plane = new byte[MapRegion.AREA];
+				int[] tints = new int[MapRegion.AREA];
+				for (int shift = 16; shift >= 0; shift -= 8) {
+					body.readFully(plane);
+					for (int i = 0; i < MapRegion.AREA; i++) {
+						tints[i] |= (plane[i] & 0xFF) << shift;
+					}
+				}
+				return new Data(colors, tints);
 			}
 		} catch (IOException e) {
 			LOGGER.warn("Could not read map region {}", file, e);
@@ -99,7 +118,7 @@ public final class RegionFiles {
 		}
 	}
 
-	static void write(Path file, byte[] colors) {
+	static void write(Path file, Data data) {
 		Path temp = file.resolveSibling(file.getFileName() + ".tmp");
 		try {
 			Files.createDirectories(file.getParent());
@@ -107,7 +126,18 @@ public final class RegionFiles {
 				raw.write(new byte[] {(byte) (MAGIC >>> 24), (byte) (MAGIC >>> 16), (byte) (MAGIC >>> 8), (byte) MAGIC, VERSION});
 				Deflater deflater = new Deflater(Deflater.BEST_COMPRESSION);
 				try (DeflaterOutputStream body = new DeflaterOutputStream(raw, deflater, 8192)) {
-					body.write(colors);
+					body.write(data.colors());
+					int[] tints = data.tints();
+					body.write(tints == null ? 0 : 1);
+					if (tints != null) {
+						byte[] plane = new byte[MapRegion.AREA];
+						for (int shift = 16; shift >= 0; shift -= 8) {
+							for (int i = 0; i < MapRegion.AREA; i++) {
+								plane[i] = (byte) (tints[i] >> shift);
+							}
+							body.write(plane);
+						}
+					}
 				} finally {
 					deflater.end();
 				}

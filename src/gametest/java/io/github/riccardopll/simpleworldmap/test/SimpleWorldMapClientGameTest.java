@@ -82,6 +82,15 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 			input.pressKey(SimpleWorldMap.openMapKey);
 			context.waitForScreen(null);
 
+			world.getServer().runCommand("execute as @p at @s run fillbiome ~-32 -64 ~-32 ~31 -57 ~31 minecraft:savanna");
+			context.waitTicks(60);
+			input.pressKey(SimpleWorldMap.openMapKey);
+			context.waitForScreen(WorldMapScreen.class);
+			context.waitTicks(5);
+			context.takeScreenshot("swm-savanna-patch");
+			input.pressKey(SimpleWorldMap.openMapKey);
+			context.waitForScreen(null);
+
 			world.getServer().runCommand("gamemode creative @a");
 			world.getServer().runCommand("execute in minecraft:the_nether run tp @a 0 64 0");
 			context.waitFor(mc -> mc.level != null && mc.level.dimension().identifier().getPath().equals("the_nether"));
