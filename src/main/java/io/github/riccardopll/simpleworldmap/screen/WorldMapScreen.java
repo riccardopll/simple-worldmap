@@ -43,6 +43,7 @@ public final class WorldMapScreen extends Screen {
 	private double centerZ;
 	private float scale = lastScale;
 	private @Nullable Waypoint hovered;
+	private boolean panning;
 
 	public WorldMapScreen(MapSession session) {
 		super(Component.translatable("simple-worldmap.map.title"));
@@ -214,7 +215,19 @@ public final class WorldMapScreen extends Screen {
 			}
 			return true;
 		}
-		return event.button() == InputConstants.MOUSE_BUTTON_LEFT;
+		if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
+			panning = true;
+			return true;
+		}
+		return false;
+	}
+
+	@Override
+	public boolean mouseReleased(MouseButtonEvent event) {
+		if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
+			panning = false;
+		}
+		return super.mouseReleased(event);
 	}
 
 	private int estimateY(int x, int z) {
@@ -228,7 +241,8 @@ public final class WorldMapScreen extends Screen {
 
 	@Override
 	public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
-		if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
+		// The game can report a button as held when its release was dropped during world loading.
+		if (panning && event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
 			centerX -= dx / scale;
 			centerZ -= dy / scale;
 			return true;
