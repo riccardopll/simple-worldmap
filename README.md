@@ -8,7 +8,7 @@ It records the terrain you explore and shows it on a full-screen map with waypoi
 
 - Full-screen map of explored terrain, colored like vanilla map items (one pixel per block, with height and water-depth shading).
 - Pan by dragging, zoom with the scroll wheel or keys, coordinates under the cursor.
-- Player heads: yours with a facing marker, and other players within the server's tracking range, with their names.
+- Player heads with name labels: yours, and other players within the server's tracking range.
 - Waypoints with a name and color, stored per world or server and per dimension.
 - Nether support: the map shows the first floor below the bedrock roof.
 
@@ -17,16 +17,15 @@ It records the terrain you explore and shows it on a full-screen map with waypoi
 | Input | Action |
 | --- | --- |
 | `M` | Open or close the map |
-| `B` | Add a waypoint at your position |
 | Left-drag | Pan the map |
 | Scroll wheel or two-finger swipe | Zoom in or out, centered on the cursor |
-| `=` / `-` (in the map) | Zoom in or out, centered on the screen |
+| `+` / `-` (in the map) | Zoom in or out, centered on the screen |
 | Right-click on empty map | Add a waypoint at that spot |
 | Right-click on a waypoint | Edit or delete it |
 | `Space` (in the map) | Center the map on yourself |
 | `Enter` (in the waypoint dialog) | Save |
 
-You can rebind `M`, `B`, `=` and `-` under Options → Controls → Key Binds → Simple World Map.
+You can rebind `M` under Options → Controls → Key Binds → Simple World Map. The zoom keys follow the characters on your keyboard layout, so `+` and `-` work on any layout, as do `=` and the numpad keys.
 
 ## Install
 

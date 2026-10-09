@@ -4,7 +4,6 @@ import com.mojang.blaze3d.platform.InputConstants;
 import io.github.riccardopll.simpleworldmap.map.MapRegion;
 import io.github.riccardopll.simpleworldmap.map.MapSession;
 import io.github.riccardopll.simpleworldmap.map.RegionFiles;
-import io.github.riccardopll.simpleworldmap.screen.WaypointScreen;
 import io.github.riccardopll.simpleworldmap.screen.WorldMapScreen;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents;
@@ -26,9 +25,6 @@ public final class SimpleWorldMap implements ClientModInitializer {
 	private static final int SAVE_INTERVAL_TICKS = 600;
 
 	public static KeyMapping openMapKey;
-	public static KeyMapping addWaypointKey;
-	public static KeyMapping zoomInKey;
-	public static KeyMapping zoomOutKey;
 
 	private static @Nullable MapSession session;
 	private static long ticks;
@@ -38,12 +34,6 @@ public final class SimpleWorldMap implements ClientModInitializer {
 		KeyMapping.Category category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath(MOD_ID, "general"));
 		openMapKey = KeyMappingHelper.registerKeyMapping(
 			new KeyMapping("key.simple-worldmap.open_map", InputConstants.KEY_M, category));
-		addWaypointKey = KeyMappingHelper.registerKeyMapping(
-			new KeyMapping("key.simple-worldmap.add_waypoint", InputConstants.KEY_B, category));
-		zoomInKey = KeyMappingHelper.registerKeyMapping(
-			new KeyMapping("key.simple-worldmap.zoom_in", InputConstants.KEY_EQUALS, category));
-		zoomOutKey = KeyMappingHelper.registerKeyMapping(
-			new KeyMapping("key.simple-worldmap.zoom_out", InputConstants.KEY_MINUS, category));
 
 		ClientChunkEvents.CHUNK_LOAD.register((level, chunk) -> {
 			MapSession current = session(level);
@@ -76,14 +66,6 @@ public final class SimpleWorldMap implements ClientModInitializer {
 		}
 	}
 
-	/** Zoom keys act only inside the map screen, so presses made in game are discarded. */
-	private static void drainZoomClicks() {
-		while (zoomInKey.consumeClick()) {
-		}
-		while (zoomOutKey.consumeClick()) {
-		}
-	}
-
 	private static void tick(Minecraft client) {
 		ClientLevel level = client.level;
 		LocalPlayer player = client.player;
@@ -91,9 +73,6 @@ public final class SimpleWorldMap implements ClientModInitializer {
 			closeSession();
 			while (openMapKey.consumeClick()) {
 			}
-			while (addWaypointKey.consumeClick()) {
-			}
-			drainZoomClicks();
 			return;
 		}
 
@@ -105,13 +84,6 @@ public final class SimpleWorldMap implements ClientModInitializer {
 				client.gui.setScreen(new WorldMapScreen(current));
 			}
 		}
-		while (addWaypointKey.consumeClick()) {
-			if (client.gui.screen() == null) {
-				client.gui.setScreen(WaypointScreen.create(null, current, player.blockPosition()));
-			}
-		}
-
-		drainZoomClicks();
 
 		int playerChunkX = player.blockPosition().getX() >> 4;
 		int playerChunkZ = player.blockPosition().getZ() >> 4;

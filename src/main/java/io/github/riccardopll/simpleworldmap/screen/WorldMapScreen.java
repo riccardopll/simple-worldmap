@@ -20,6 +20,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.PlayerModelPart;
 import net.minecraft.world.level.levelgen.Heightmap;
 import org.joml.Matrix3x2fStack;
+import org.lwjgl.sdl.SDLKeycode;
 import org.jspecify.annotations.Nullable;
 
 public final class WorldMapScreen extends Screen {
@@ -29,7 +30,7 @@ public final class WorldMapScreen extends Screen {
 	private static final int BACKGROUND = 0xFF15171A;
 	private static final int PANEL = 0xA0000000;
 	private static final int TEXT = 0xFFFFFFFF;
-	private static final int MUTED = 0xFFB0B0B0;
+	private static final int LABEL_BACKGROUND = 0x99000000;
 	private static final int HOVER_RADIUS = 6;
 	private static final int HEAD_SIZE = 8;
 	private static final float ZOOM_STEP = 1.2F;
@@ -155,28 +156,31 @@ public final class WorldMapScreen extends Screen {
 			return;
 		}
 		for (AbstractClientPlayer other : session.level.players()) {
-			if (other == self || other.isInvisibleTo(self)) {
-				continue;
+			if (other != self && !other.isInvisibleTo(self)) {
+				drawPlayer(graphics, other, partialTick, 0xFF000000);
 			}
-			float x = screenX(Mth.lerp(partialTick, other.xo, other.getX()));
-			float y = screenY(Mth.lerp(partialTick, other.zo, other.getZ()));
-			if (x < -50 || y < -20 || x > width + 50 || y > height + 20) {
-				continue;
-			}
-			drawHead(graphics, other, x, y, 0xFF000000);
-			graphics.centeredText(font, other.getName(), Math.round(x), Math.round(y) - 16, TEXT);
 		}
+		drawPlayer(graphics, self, partialTick, 0xFFFFFFFF);
+	}
 
-		float x = screenX(Mth.lerp(partialTick, self.xo, self.getX()));
-		float y = screenY(Mth.lerp(partialTick, self.zo, self.getZ()));
-		Matrix3x2fStack pose = graphics.pose();
-		pose.pushMatrix();
-		pose.translate(x, y);
-		pose.rotate((self.getViewYRot(partialTick) + 180.0F) * Mth.DEG_TO_RAD);
-		graphics.fill(-2, -11, 2, -6, 0xFF000000);
-		graphics.fill(-1, -10, 1, -7, 0xFFFFFFFF);
-		pose.popMatrix();
-		drawHead(graphics, self, x, y, 0xFFFFFFFF);
+	/** Draws the player's head with their name in a label below it. */
+	private void drawPlayer(GuiGraphicsExtractor graphics, AbstractClientPlayer player, float partialTick, int border) {
+		float x = screenX(Mth.lerp(partialTick, player.xo, player.getX()));
+		float y = screenY(Mth.lerp(partialTick, player.zo, player.getZ()));
+		if (x < -50 || y < -20 || x > width + 50 || y > height + 20) {
+			return;
+		}
+		drawHead(graphics, player, x, y, border);
+
+		Component name = player.getName();
+		int left = Math.round(x) - font.width(name) / 2 - 2;
+		int right = left + font.width(name) + 4;
+		int top = Math.round(y) + HEAD_SIZE / 2 + 3;
+		int bottom = top + 12;
+		graphics.fill(left + 1, top, right - 1, bottom, LABEL_BACKGROUND);
+		graphics.fill(left, top + 1, left + 1, bottom - 1, LABEL_BACKGROUND);
+		graphics.fill(right - 1, top + 1, right, bottom - 1, LABEL_BACKGROUND);
+		graphics.text(font, name, left + 2, top + 2, TEXT);
 	}
 
 	private static void drawHead(GuiGraphicsExtractor graphics, AbstractClientPlayer player, float x, float y, int border) {
@@ -190,13 +194,9 @@ public final class WorldMapScreen extends Screen {
 	}
 
 	private void drawOverlay(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
-		Component hint = Component.translatable("simple-worldmap.map.hint");
 		String cursor = Component.translatable("simple-worldmap.map.cursor", Mth.floor(worldX(mouseX)), Mth.floor(worldZ(mouseY))).getString();
 		graphics.fill(0, height - 14, width, height, PANEL);
 		graphics.text(font, cursor, 4, height - 11, TEXT);
-		if (font.width(cursor) + font.width(hint) + 16 <= width) {
-			graphics.text(font, hint, width - font.width(hint) - 4, height - 11, MUTED);
-		}
 	}
 
 	@Override
@@ -260,8 +260,13 @@ public final class WorldMapScreen extends Screen {
 			onClose();
 			return true;
 		}
-		if (SimpleWorldMap.zoomInKey.matches(event) || SimpleWorldMap.zoomOutKey.matches(event)) {
-			zoom(SimpleWorldMap.zoomInKey.matches(event) ? 1 : -1, width / 2.0, height / 2.0);
+		int keycode = event.keycode();
+		if (keycode == SDLKeycode.SDLK_PLUS || keycode == SDLKeycode.SDLK_EQUALS || keycode == SDLKeycode.SDLK_KP_PLUS) {
+			zoom(1, width / 2.0, height / 2.0);
+			return true;
+		}
+		if (keycode == SDLKeycode.SDLK_MINUS || keycode == SDLKeycode.SDLK_KP_MINUS) {
+			zoom(-1, width / 2.0, height / 2.0);
 			return true;
 		}
 		if (event.key() == InputConstants.KEY_SPACE) {

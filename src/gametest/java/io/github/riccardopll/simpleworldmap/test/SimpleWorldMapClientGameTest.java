@@ -20,6 +20,7 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.TestDedicatedServerCon
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestDedicatedServerContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.minecraft.client.player.RemotePlayer;
+import org.lwjgl.sdl.SDLScancode;
 
 public final class SimpleWorldMapClientGameTest implements FabricClientGameTest {
 	@Override
@@ -68,13 +69,15 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 			context.waitForScreen(WorldMapScreen.class);
 			check(waypoints(context).isEmpty(), "waypoint deleted");
 
-			input.pressKey(SimpleWorldMap.openMapKey);
-			context.waitForScreen(null);
-			input.pressKey(SimpleWorldMap.addWaypointKey);
+			input.setCursorPos(center[0], center[1]);
+			context.waitTicks(2);
+			input.pressMouse(InputConstants.MOUSE_BUTTON_RIGHT);
 			context.waitForScreen(WaypointScreen.class);
 			input.pressKey(InputConstants.KEY_RETURN);
+			context.waitForScreen(WorldMapScreen.class);
+			check(waypoints(context).size() == 1, "waypoint added with Enter");
+			input.pressKey(SimpleWorldMap.openMapKey);
 			context.waitForScreen(null);
-			check(waypoints(context).size() == 1, "waypoint added at player");
 
 			world.getServer().runCommand("gamemode creative @a");
 			world.getServer().runCommand("execute in minecraft:the_nether run tp @a 0 64 0");
@@ -131,12 +134,12 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 
 			input.pressKey(InputConstants.KEY_SPACE);
 			for (int i = 0; i < 4; i++) {
-				input.pressKey(SimpleWorldMap.zoomOutKey);
+				input.pressKey(SDLScancode.SDL_SCANCODE_KP_MINUS);
 			}
 			context.waitTicks(5);
 			context.takeScreenshot("swm-terrain-map-key-zoomed-out");
 			for (int i = 0; i < 6; i++) {
-				input.pressKey(SimpleWorldMap.zoomInKey);
+				input.pressKey(SDLScancode.SDL_SCANCODE_KP_PLUS);
 			}
 
 			context.runOnClient(mc -> {
