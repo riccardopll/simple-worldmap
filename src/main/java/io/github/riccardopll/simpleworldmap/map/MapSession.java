@@ -14,6 +14,8 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.storage.LevelResource;
@@ -36,14 +38,19 @@ public final class MapSession {
 
 	public MapSession(Minecraft minecraft, ClientLevel level) {
 		this.level = level;
-		Identifier dimension = level.dimension().identifier();
-		this.dir = minecraft.gameDirectory.toPath()
-			.resolve("simple-worldmap")
-			.resolve(worldId(minecraft))
-			.resolve(sanitize(dimension.getNamespace()))
-			.resolve(sanitize(dimension.getPath()));
+		this.dir = directory(minecraft, level.dimension());
 		this.onDisk = RegionFiles.list(dir);
 		this.waypoints = WaypointStore.load(dir);
+	}
+
+	/** The folder holding map data and waypoints for a dimension of the current world, server or realm. */
+	public static Path directory(Minecraft minecraft, ResourceKey<Level> dimension) {
+		Identifier id = dimension.identifier();
+		return minecraft.gameDirectory.toPath()
+			.resolve("simple-worldmap")
+			.resolve(worldId(minecraft))
+			.resolve(sanitize(id.getNamespace()))
+			.resolve(sanitize(id.getPath()));
 	}
 
 	/** A stable folder name for the current single-player world, server or realm. */

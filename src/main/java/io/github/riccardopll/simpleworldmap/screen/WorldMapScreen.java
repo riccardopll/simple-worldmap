@@ -180,20 +180,20 @@ public final class WorldMapScreen extends Screen {
 		}
 		for (AbstractClientPlayer other : session.level.players()) {
 			if (other != self && !other.isInvisibleTo(self)) {
-				drawPlayer(graphics, other, partialTick, 0xFF000000);
+				drawPlayer(graphics, other, partialTick, true);
 			}
 		}
-		drawPlayer(graphics, self, partialTick, 0xFFFFFFFF);
+		drawPlayer(graphics, self, partialTick, false);
 	}
 
 	/** Draws the player's head, with their name in a label below it for other players. */
-	private void drawPlayer(GuiGraphicsExtractor graphics, AbstractClientPlayer player, float partialTick, int border) {
+	private void drawPlayer(GuiGraphicsExtractor graphics, AbstractClientPlayer player, float partialTick, boolean outline) {
 		float x = screenX(Mth.lerp(partialTick, player.xo, player.getX()));
 		float y = screenY(Mth.lerp(partialTick, player.zo, player.getZ()));
 		if (x < -50 || y < -20 || x > width + 50 || y > height + 20) {
 			return;
 		}
-		drawHead(graphics, player, x, y, border);
+		drawHead(graphics, player, x, y, outline);
 		if (player == minecraft.player) {
 			return;
 		}
@@ -209,11 +209,13 @@ public final class WorldMapScreen extends Screen {
 		graphics.text(font, name, left + 2, top + 2, TEXT);
 	}
 
-	private static void drawHead(GuiGraphicsExtractor graphics, AbstractClientPlayer player, float x, float y, int border) {
+	private static void drawHead(GuiGraphicsExtractor graphics, AbstractClientPlayer player, float x, float y, boolean outline) {
 		Matrix3x2fStack pose = graphics.pose();
 		pose.pushMatrix();
 		pose.translate(x, y);
-		graphics.fill(-HEAD_SIZE / 2 - 1, -HEAD_SIZE / 2 - 1, HEAD_SIZE / 2 + 1, HEAD_SIZE / 2 + 1, border);
+		if (outline) {
+			graphics.fill(-HEAD_SIZE / 2 - 1, -HEAD_SIZE / 2 - 1, HEAD_SIZE / 2 + 1, HEAD_SIZE / 2 + 1, 0xFF000000);
+		}
 		PlayerFaceExtractor.extractRenderState(graphics, player.getSkin().body().texturePath(), -HEAD_SIZE / 2, -HEAD_SIZE / 2, HEAD_SIZE,
 			player.isModelPartShown(PlayerModelPart.HAT), false, -1);
 		pose.popMatrix();

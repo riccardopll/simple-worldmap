@@ -20,6 +20,7 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestDedicatedServerConnection;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestDedicatedServerContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
+import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.client.player.RemotePlayer;
 import org.lwjgl.sdl.SDLEvents;
 import org.lwjgl.sdl.SDLScancode;
@@ -91,6 +92,10 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 			input.pressKey(SimpleWorldMap.openMapKey);
 			context.waitForScreen(null);
 
+			respawnAfterKill(context, world);
+			List<Waypoint> afterDeath = waypoints(context);
+			check(afterDeath.size() == 2 && afterDeath.getLast().name().equals("Death"), "death waypoint added: " + afterDeath);
+
 			world.getServer().runCommand("gamemode creative @a");
 			world.getServer().runCommand("execute in minecraft:the_nether run tp @a 0 64 0");
 			context.waitFor(mc -> mc.level != null && mc.level.dimension().identifier().getPath().equals("the_nether"));
@@ -102,6 +107,10 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 			context.takeScreenshot("swm-nether-map");
 			input.pressKey(SimpleWorldMap.openMapKey);
 			context.waitForScreen(null);
+
+			respawnAfterKill(context, world);
+			check(context.computeOnClient(mc -> mc.level.dimension().identifier().getPath()).equals("overworld"), "respawned in the overworld");
+			check(waypoints(context).size() == 2, "nether death not added to overworld waypoints");
 		}
 
 		context.waitTicks(20);
@@ -109,6 +118,7 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 		check(countRegions(overworld) > 0, "overworld region files written in " + overworld);
 		check(Files.isRegularFile(overworld.resolve("waypoints.json")), "waypoints saved");
 		check(countRegions(overworld.resolveSibling("the_nether")) > 0, "nether region files written");
+		check(readString(overworld.resolveSibling("the_nether").resolve("waypoints.json")).contains("\"Death\""), "nether death waypoint saved");
 
 		try (TestDedicatedServerContext server = context.worldBuilder().createServer();
 			TestDedicatedServerConnection connection = server.connect()) {
@@ -185,6 +195,24 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 
 	private static List<Waypoint> waypoints(ClientGameTestContext context) {
 		return context.computeOnClient(mc -> List.copyOf(SimpleWorldMap.session(mc.level).waypoints.all()));
+	}
+
+	private static void respawnAfterKill(ClientGameTestContext context, TestSingleplayerContext world) {
+		world.getServer().runCommand("kill @a");
+		context.waitForScreen(DeathScreen.class);
+		context.waitTicks(30);
+		context.clickScreenButton("deathScreen.respawn");
+		context.waitForScreen(null);
+		world.getConnection().waitForChunksRender();
+		context.waitTicks(5);
+	}
+
+	private static String readString(Path file) {
+		try {
+			return Files.readString(file);
+		} catch (IOException e) {
+			throw new AssertionError("cannot read " + file, e);
+		}
 	}
 
 	private static void pushPinch(float factor) {

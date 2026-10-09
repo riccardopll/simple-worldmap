@@ -8,6 +8,7 @@
 	"simple-worldmap.waypoint.edit": "Edit Waypoint",
 	"simple-worldmap.waypoint.name": "Name",
 	"simple-worldmap.waypoint.default_name": "Waypoint %s",
+	"simple-worldmap.waypoint.death": "Death",
 	"simple-worldmap.waypoint.color": "Color:",
 	"simple-worldmap.waypoint.save": "Save",
 	"simple-worldmap.waypoint.delete": "Delete"

@@ -5,6 +5,8 @@ import io.github.riccardopll.simpleworldmap.map.MapRegion;
 import io.github.riccardopll.simpleworldmap.map.MapSession;
 import io.github.riccardopll.simpleworldmap.map.RegionFiles;
 import io.github.riccardopll.simpleworldmap.screen.WorldMapScreen;
+import io.github.riccardopll.simpleworldmap.waypoint.Waypoint;
+import io.github.riccardopll.simpleworldmap.waypoint.WaypointStore;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
@@ -14,6 +16,9 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.GlobalPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.Nullable;
 
@@ -28,6 +33,8 @@ public final class SimpleWorldMap implements ClientModInitializer {
 
 	private static @Nullable MapSession session;
 	private static long ticks;
+	private static boolean deathKnown;
+	private static @Nullable GlobalPos lastDeath;
 
 	@Override
 	public void onInitializeClient() {
@@ -66,11 +73,34 @@ public final class SimpleWorldMap implements ClientModInitializer {
 		}
 	}
 
+	/**
+	 * The server sends the last death location with every respawn, so a new value means the player died.
+	 * The value present when joining is only remembered.
+	 */
+	private static void checkDeath(Minecraft client, MapSession current, @Nullable GlobalPos death) {
+		if (!deathKnown) {
+			deathKnown = true;
+			lastDeath = death;
+			return;
+		}
+		if (death == null || death.equals(lastDeath)) {
+			return;
+		}
+		lastDeath = death;
+		WaypointStore store = death.dimension() == current.level.dimension()
+			? current.waypoints
+			: WaypointStore.load(MapSession.directory(client, death.dimension()));
+		BlockPos pos = death.pos();
+		String name = Component.translatable("simple-worldmap.waypoint.death").getString();
+		store.add(new Waypoint(name, pos.getX(), pos.getY(), pos.getZ(), Waypoint.COLORS[0]));
+	}
+
 	private static void tick(Minecraft client) {
 		ClientLevel level = client.level;
 		LocalPlayer player = client.player;
 		if (level == null || player == null) {
 			closeSession();
+			deathKnown = false;
 			while (openMapKey.consumeClick()) {
 			}
 			return;
@@ -78,6 +108,7 @@ public final class SimpleWorldMap implements ClientModInitializer {
 
 		MapSession current = session(level);
 		ticks++;
+		checkDeath(client, current, player.getLastDeathLocation().orElse(null));
 
 		while (openMapKey.consumeClick()) {
 			if (client.gui.screen() == null) {
