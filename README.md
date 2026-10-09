@@ -4,7 +4,7 @@
 
 A small client-side world map mod for Fabric.
 
-It records the terrain you explore and shows it on a fullscreen map with waypoints. It works in single player and on vanilla servers.
+It records the terrain you explore and shows it on a fullscreen map with waypoints. It works in singleplayer and on vanilla servers.
 
 ## Features
 
@@ -32,14 +32,13 @@ Download the latest jar from [GitHub Releases](https://github.com/riccardopll/si
 
 ## Installation
 
-1. Install [Fabric](https://fabricmc.net/use/) and the [Fabric API](https://modrinth.com/mod/fabric-api).
-2. Put [Fabric API](https://modrinth.com/mod/fabric-api) in your `mods` folder.
-3. Put `simple-worldmap-<version>.jar` in your `mods` folder.
+1. Install [Fabric](https://fabricmc.net/use/) and [Fabric API](https://modrinth.com/mod/fabric-api).
+2. Put `simple-worldmap-<version>.jar` in your `mods` folder.
 
 ## Storage
 
 Map data is stored in `.minecraft/simple-worldmap/`, separate from world saves. To reset the map for a world, delete its folder while the game is closed.
 
-## Reporting issues
+## Contributing
 
 Report bugs and feature requests on the [issue tracker](https://github.com/riccardopll/simple-worldmap/issues).
