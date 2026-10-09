@@ -2,6 +2,9 @@ plugins {
 	id 'net.fabricmc.fabric-loom' version "${loom_version}"
 }
 
+// CI sets BUILD_NUMBER to the workflow run number.
+version = "${project.mod_version}.${providers.environmentVariable('BUILD_NUMBER').getOrElse('0-SNAPSHOT')}"
+
 base {
 	archivesName = 'simple-worldmap'
 }
