@@ -20,29 +20,16 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestDedicatedServerConnection;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestDedicatedServerContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
-import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.gui.screens.options.controls.KeyBindsScreen;
 import net.minecraft.client.player.RemotePlayer;
-import org.lwjgl.sdl.SDLKeyboard;
 
 public final class SimpleWorldMapClientGameTest implements FabricClientGameTest {
 	@Override
 	public void runTest(ClientGameTestContext context) {
 		TestInput input = context.getInput();
 		Path mapRoot = context.computeOnClient(mc -> mc.gameDirectory.toPath().resolve("simple-worldmap"));
-
-		// The test framework restores options saved before the window existed, undoing the layout defaults.
-		context.runOnClient(mc -> {
-			SimpleWorldMap.zoomInKey.setKey(SimpleWorldMap.zoomInKey.getDefaultKey());
-			SimpleWorldMap.zoomOutKey.setKey(SimpleWorldMap.zoomOutKey.getDefaultKey());
-			KeyMapping.resetMapping();
-		});
-		int zoomInCharacter = context.computeOnClient(mc -> typedBy(SimpleWorldMap.zoomInKey));
-		int zoomOutCharacter = context.computeOnClient(mc -> typedBy(SimpleWorldMap.zoomOutKey));
-		check(zoomInCharacter == '+' || zoomInCharacter == '=', "zoom in defaults to the + key, types " + Character.toString(zoomInCharacter));
-		check(zoomOutCharacter == '-', "zoom out defaults to the - key, types " + Character.toString(zoomOutCharacter));
 		deleteRecursively(mapRoot);
 
 		try (TestSingleplayerContext world = context.worldBuilder().create()) {
@@ -205,10 +192,6 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 		context.takeScreenshot("swm-key-binds");
 		context.runOnClient(mc -> mc.gui.setScreen(new TitleScreen()));
 		context.waitForScreen(TitleScreen.class);
-	}
-
-	private static int typedBy(KeyMapping mapping) {
-		return SDLKeyboard.SDL_GetKeyFromScancode(mapping.getDefaultKey().getValue(), (short) 0, false);
 	}
 
 	private static List<Waypoint> waypoints(ClientGameTestContext context) {

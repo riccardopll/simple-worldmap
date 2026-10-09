@@ -12,7 +12,6 @@
 	"license": "MIT",
 	"icon": "assets/simple-worldmap/icon.png",
 	"environment": "client",
-	"accessWidener": "simple-worldmap.accesswidener",
 	"entrypoints": {
 		"client": ["io.github.riccardopll.simpleworldmap.SimpleWorldMap"]
 	},

@@ -6,10 +6,6 @@ base {
 	archivesName = 'simple-worldmap'
 }
 
-loom {
-	accessWidenerPath = file("src/main/resources/simple-worldmap.accesswidener")
-}
-
 fabricApi {
 	configureTests {
 		createSourceSet = true
