@@ -25,11 +25,16 @@ jobs:
 
       - run: ./gradlew build
 
+      - name: Install software renderer
+        run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers
+
+      # Loom runs the client inside xvfb-run when CI is set.
       - name: Run client game tests
-        run: xvfb-run -a ./gradlew runClientGameTest
+        run: ./gradlew runClientGameTest
+        timeout-minutes: 20
 
       - name: Upload game test output
-        if: failure()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: game-test-output
