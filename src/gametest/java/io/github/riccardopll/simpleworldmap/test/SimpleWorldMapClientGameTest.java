@@ -1,6 +1,7 @@
 package io.github.riccardopll.simpleworldmap.test;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -20,7 +21,9 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.TestDedicatedServerCon
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestDedicatedServerContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.minecraft.client.player.RemotePlayer;
+import org.lwjgl.sdl.SDLEvents;
 import org.lwjgl.sdl.SDLScancode;
+import org.lwjgl.sdl.SDL_Event;
 
 public final class SimpleWorldMapClientGameTest implements FabricClientGameTest {
 	@Override
@@ -151,6 +154,17 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 			context.waitTicks(5);
 			context.takeScreenshot("swm-terrain-map-other-player");
 			check(context.computeOnClient(mc -> mc.level.players().size()) == 2, "remote player present in client level");
+
+			float before = mapScale(context);
+			context.runOnClient(mc -> {
+				for (int i = 0; i < 5; i++) {
+					pushPinch(0.8F);
+				}
+			});
+			context.waitTicks(5);
+			float after = mapScale(context);
+			check(after < before * 0.5F, "pinch zooms out: " + before + " -> " + after);
+			context.takeScreenshot("swm-terrain-map-pinched-out");
 			input.pressKey(SimpleWorldMap.openMapKey);
 			context.waitForScreen(null);
 		}
@@ -162,6 +176,26 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 
 	private static List<Waypoint> waypoints(ClientGameTestContext context) {
 		return context.computeOnClient(mc -> List.copyOf(SimpleWorldMap.session(mc.level).waypoints.all()));
+	}
+
+	private static void pushPinch(float factor) {
+		try (SDL_Event event = SDL_Event.calloc()) {
+			event.type(SDLEvents.SDL_EVENT_PINCH_UPDATE);
+			event.pinch().scale(factor);
+			check(SDLEvents.SDL_PushEvent(event), "pinch event pushed");
+		}
+	}
+
+	private static float mapScale(ClientGameTestContext context) {
+		return context.computeOnClient(mc -> {
+			try {
+				Field scale = WorldMapScreen.class.getDeclaredField("scale");
+				scale.setAccessible(true);
+				return scale.getFloat(mc.gui.screen());
+			} catch (ReflectiveOperationException e) {
+				throw new AssertionError(e);
+			}
+		});
 	}
 
 	private static Path singleDir(Path parent) {

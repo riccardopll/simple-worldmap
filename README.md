@@ -7,7 +7,7 @@ It records the terrain you explore and shows it on a full-screen map with waypoi
 ## Features
 
 - Full-screen map of explored terrain, colored like vanilla map items (one pixel per block, with height and water-depth shading).
-- Pan by dragging, zoom with the scroll wheel or keys, coordinates under the cursor.
+- Pan by dragging, zoom with the scroll wheel, trackpad pinch or keys, coordinates under the cursor.
 - Player heads: yours, and other players within the server's tracking range with their names.
 - Waypoints with a name and color, stored per world or server and per dimension.
 - Nether support: the map shows the first floor below the bedrock roof.
@@ -18,7 +18,7 @@ It records the terrain you explore and shows it on a full-screen map with waypoi
 | --- | --- |
 | `M` | Open or close the map |
 | Left-drag | Pan the map |
-| Scroll wheel or two-finger swipe | Zoom in or out, centered on the cursor |
+| Scroll wheel, two-finger swipe or trackpad pinch | Zoom in or out, centered on the cursor |
 | `+` / `-` (in the map) | Zoom in or out, centered on the screen |
 | Right-click on empty map | Add a waypoint at that spot |
 | Right-click on a waypoint | Edit or delete it |

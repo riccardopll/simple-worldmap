@@ -1,10 +1,12 @@
 package io.github.riccardopll.simpleworldmap.screen;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.blaze3d.platform.Window;
 import io.github.riccardopll.simpleworldmap.SimpleWorldMap;
 import io.github.riccardopll.simpleworldmap.map.MapRegion;
 import io.github.riccardopll.simpleworldmap.map.MapSession;
 import io.github.riccardopll.simpleworldmap.waypoint.Waypoint;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.PlayerFaceExtractor;
 import net.minecraft.client.gui.screens.Screen;
@@ -20,7 +22,10 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.PlayerModelPart;
 import net.minecraft.world.level.levelgen.Heightmap;
 import org.joml.Matrix3x2fStack;
+import org.lwjgl.sdl.SDLEvents;
 import org.lwjgl.sdl.SDLKeycode;
+import org.lwjgl.sdl.SDL_Event;
+import org.lwjgl.sdl.SDL_EventFilter;
 import org.jspecify.annotations.Nullable;
 
 public final class WorldMapScreen extends Screen {
@@ -35,6 +40,21 @@ public final class WorldMapScreen extends Screen {
 	private static final int HEAD_SIZE = 8;
 	private static final float ZOOM_STEP = 1.2F;
 
+	/** Minecraft ignores SDL pinch events, so the map watches for trackpad pinches while it is open. */
+	private static final SDL_EventFilter PINCH_WATCH = SDL_EventFilter.create((userdata, address) -> {
+		SDL_Event event = SDL_Event.create(address);
+		if (event.type() == SDLEvents.SDL_EVENT_PINCH_UPDATE) {
+			float factor = event.pinch().scale();
+			Minecraft minecraft = Minecraft.getInstance();
+			minecraft.execute(() -> {
+				if (minecraft.gui.screen() instanceof WorldMapScreen screen) {
+					screen.pinch(factor);
+				}
+			});
+		}
+		return true;
+	});
+
 	private static float lastScale = 2.0F;
 	private static long frame;
 
@@ -44,6 +64,7 @@ public final class WorldMapScreen extends Screen {
 	private float scale = lastScale;
 	private @Nullable Waypoint hovered;
 	private boolean panning;
+	private boolean watchingPinch;
 
 	public WorldMapScreen(MapSession session) {
 		super(Component.translatable("simple-worldmap.map.title"));
@@ -264,9 +285,13 @@ public final class WorldMapScreen extends Screen {
 
 	/** Zooms by {@code steps} while keeping the world point under the given screen position fixed. */
 	private void zoom(double steps, double x, double y) {
+		zoomBy((float) Math.pow(ZOOM_STEP, steps), x, y);
+	}
+
+	private void zoomBy(float factor, double x, double y) {
 		double anchorX = worldX(x);
 		double anchorZ = worldZ(y);
-		scale = Mth.clamp(scale * (float) Math.pow(ZOOM_STEP, steps), MIN_SCALE, MAX_SCALE);
+		scale = Mth.clamp(scale * factor, MIN_SCALE, MAX_SCALE);
 		centerX = anchorX - (x - width / 2.0) / scale;
 		centerZ = anchorZ - (y - height / 2.0) / scale;
 	}
@@ -301,7 +326,26 @@ public final class WorldMapScreen extends Screen {
 	}
 
 	@Override
+	protected void init() {
+		if (!watchingPinch) {
+			SDLEvents.SDL_AddEventWatch(PINCH_WATCH, 0L);
+			watchingPinch = true;
+		}
+	}
+
+	private void pinch(float factor) {
+		if (factor > 0 && Float.isFinite(factor)) {
+			Window window = minecraft.getWindow();
+			zoomBy(factor, minecraft.mouseHandler.getScaledXPos(window), minecraft.mouseHandler.getScaledYPos(window));
+		}
+	}
+
+	@Override
 	public void removed() {
+		if (watchingPinch) {
+			SDLEvents.SDL_RemoveEventWatch(PINCH_WATCH, 0L);
+			watchingPinch = false;
+		}
 		lastScale = scale;
 		session.releaseTextures();
 	}
