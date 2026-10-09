@@ -16,10 +16,27 @@ fabricApi {
 	}
 }
 
+repositories {
+	exclusiveContent {
+		forRepository {
+			maven {
+				name = "Terraformers"
+				url = "https://maven.terraformersmc.com/releases/"
+			}
+		}
+		filter {
+			includeGroup "com.terraformersmc"
+		}
+	}
+}
+
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// Mod Menu is only loaded in the development client.
+	localRuntime "com.terraformersmc:modmenu:${project.modmenu_version}"
 }
 
 processResources {
