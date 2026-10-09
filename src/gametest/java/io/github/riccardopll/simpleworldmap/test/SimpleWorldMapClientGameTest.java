@@ -68,6 +68,13 @@ public final class SimpleWorldMapClientGameTest implements FabricClientGameTest 
 			input.pressMouse(InputConstants.MOUSE_BUTTON_RIGHT);
 			context.waitForScreen(WaypointScreen.class);
 			context.takeScreenshot("swm-edit-waypoint");
+			int[] size = context.computeOnClient(mc -> new int[] {mc.getWindow().getScreenWidth(), mc.getWindow().getScreenHeight()});
+			input.resizeWindow(size[0] + 200, size[1] + 100);
+			context.waitTicks(2);
+			context.takeScreenshot("swm-edit-waypoint-resized");
+			check(context.computeOnClient(mc -> mc.gui.screen().width == mc.getWindow().getGuiScaledWidth()), "dialog resized");
+			input.resizeWindow(size[0], size[1]);
+			context.waitTicks(2);
 			context.clickScreenButton("simple-worldmap.waypoint.delete");
 			context.waitForScreen(WorldMapScreen.class);
 			check(waypoints(context).isEmpty(), "waypoint deleted");

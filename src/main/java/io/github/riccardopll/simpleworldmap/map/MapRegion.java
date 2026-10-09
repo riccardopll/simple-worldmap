@@ -30,8 +30,8 @@ public final class MapRegion {
 	private boolean loaded;
 	private boolean dirty;
 	private boolean textureDirty = true;
-	private DynamicTexture texture;
-	private Identifier textureId;
+	private @Nullable DynamicTexture texture;
+	private @Nullable Identifier textureId;
 	private long lastUsed;
 
 	MapRegion(int x, int z) {
@@ -120,7 +120,7 @@ public final class MapRegion {
 	 * Returns the texture id for drawing, creating or refreshing the GPU texture when {@code upload} is set.
 	 * Returns null if the texture has never been uploaded.
 	 */
-	public Identifier texture(boolean upload, long frame) {
+	public @Nullable Identifier texture(boolean upload, long frame) {
 		lastUsed = frame;
 		if (!upload) {
 			return textureId;

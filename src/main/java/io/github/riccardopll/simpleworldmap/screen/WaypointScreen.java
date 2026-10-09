@@ -24,7 +24,7 @@ public final class WaypointScreen extends Screen {
 	private static final int MAX_NAME_LENGTH = 32;
 	private static final int DIM = 0xA0000000;
 
-	private final @Nullable Screen parent;
+	private final WorldMapScreen parent;
 	private final MapSession session;
 	private final @Nullable Waypoint existing;
 	private final Waypoint initial;
@@ -38,7 +38,7 @@ public final class WaypointScreen extends Screen {
 	private EditBox yBox;
 	private EditBox zBox;
 
-	private WaypointScreen(@Nullable Screen parent, MapSession session, @Nullable Waypoint existing, Waypoint initial) {
+	private WaypointScreen(WorldMapScreen parent, MapSession session, @Nullable Waypoint existing, Waypoint initial) {
 		super(Component.translatable(existing == null ? "simple-worldmap.waypoint.add" : "simple-worldmap.waypoint.edit"));
 		this.parent = parent;
 		this.session = session;
@@ -51,14 +51,14 @@ public final class WaypointScreen extends Screen {
 		this.colorIndex = Math.max(0, indexOfColor(initial.color()));
 	}
 
-	public static WaypointScreen create(@Nullable Screen parent, MapSession session, BlockPos pos) {
+	public static WaypointScreen create(WorldMapScreen parent, MapSession session, BlockPos pos) {
 		int count = session.waypoints.all().size();
 		String name = Component.translatable("simple-worldmap.waypoint.default_name", count + 1).getString();
 		Waypoint waypoint = new Waypoint(name, pos.getX(), pos.getY(), pos.getZ(), Waypoint.COLORS[count % Waypoint.COLORS.length]);
 		return new WaypointScreen(parent, session, null, waypoint);
 	}
 
-	public static WaypointScreen edit(@Nullable Screen parent, MapSession session, Waypoint waypoint) {
+	public static WaypointScreen edit(WorldMapScreen parent, MapSession session, Waypoint waypoint) {
 		return new WaypointScreen(parent, session, waypoint, waypoint);
 	}
 
@@ -157,14 +157,14 @@ public final class WaypointScreen extends Screen {
 	}
 
 	@Override
+	public void resize(int width, int height) {
+		parent.resize(width, height);
+		super.resize(width, height);
+	}
+
+	/** Draws the map this dialog was opened from, dimmed, behind the dialog. */
+	@Override
 	public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-		if (parent == null) {
-			super.extractBackground(graphics, mouseX, mouseY, partialTick);
-			return;
-		}
-		if (parent.width != width || parent.height != height) {
-			parent.init(width, height);
-		}
 		parent.extractBackground(graphics, -1, -1, partialTick);
 		parent.extractRenderState(graphics, -1, -1, partialTick);
 		graphics.fill(0, 0, width, height, DIM);

@@ -103,7 +103,7 @@ public final class SimpleWorldMap implements ClientModInitializer {
 			return;
 		}
 		lastDeath = death;
-		WaypointStore store = death.dimension() == current.level.dimension()
+		WaypointStore store = death.dimension().equals(current.level.dimension())
 			? current.waypoints
 			: WaypointStore.load(MapSession.directory(client, death.dimension()));
 		BlockPos pos = death.pos();
