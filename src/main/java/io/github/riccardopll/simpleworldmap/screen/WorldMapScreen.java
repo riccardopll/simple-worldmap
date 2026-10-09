@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import io.github.riccardopll.simpleworldmap.SimpleWorldMap;
 import io.github.riccardopll.simpleworldmap.map.MapRegion;
 import io.github.riccardopll.simpleworldmap.map.MapSession;
+import io.github.riccardopll.simpleworldmap.map.RegionLod;
 import io.github.riccardopll.simpleworldmap.waypoint.Waypoint;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.PlayerFaceExtractor;
@@ -23,9 +24,12 @@ import org.joml.Matrix3x2fStack;
 import org.jspecify.annotations.Nullable;
 
 public final class WorldMapScreen extends Screen {
-	private static final float MIN_SCALE = 0.25F;
+	private static final float MIN_SCALE = 0.03125F;
 	private static final float MAX_SCALE = 16.0F;
-	private static final int MAX_UPLOADS_PER_FRAME = 2;
+	/** Below this scale regions are drawn from their low-detail images. */
+	private static final float FULL_DETAIL_MIN_SCALE = 0.25F;
+	/** Pixels of map data turned into textures per frame. */
+	private static final int UPLOAD_BUDGET = 2 * MapRegion.AREA;
 	private static final int BACKGROUND = 0xFF15171A;
 	private static final int PANEL = 0xA0000000;
 	private static final int TEXT = 0xFFFFFFFF;
@@ -44,6 +48,7 @@ public final class WorldMapScreen extends Screen {
 	private @Nullable Waypoint hovered;
 	private boolean panning;
 	private boolean openingDialog;
+	private int uploadBudget;
 
 	public WorldMapScreen(MapSession session) {
 		super(Component.translatable("simple-worldmap.map.title"));
@@ -88,37 +93,80 @@ public final class WorldMapScreen extends Screen {
 		drawPlayers(graphics, partialTick);
 		drawOverlay(graphics, mouseX, mouseY);
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
-		session.releaseIdleTextures(frame);
+		LocalPlayer player = minecraft.player;
+		BlockPos pos = player != null ? player.blockPosition() : BlockPos.containing(centerX, 0, centerZ);
+		session.releaseIdle(frame, pos.getX() >> MapRegion.SHIFT, pos.getZ() >> MapRegion.SHIFT);
 	}
 
+	/** The detail level to draw: 0 for full detail, else the coarsest level whose pixels are at most one GUI pixel wide. */
+	private int detailLevel() {
+		if (scale >= FULL_DETAIL_MIN_SCALE) {
+			return 0;
+		}
+		int level = 1;
+		while (level < RegionLod.LEVELS && scale * MapRegion.SIZE / RegionLod.size(level + 1) <= 1) {
+			level++;
+		}
+		return level;
+	}
+
+	/** Draws each region at the current detail level, or at another level already uploaded while that one loads. */
 	private void drawRegions(GuiGraphicsExtractor graphics) {
 		int minRegionX = Mth.floor(worldX(0)) >> MapRegion.SHIFT;
 		int maxRegionX = Mth.floor(worldX(width)) >> MapRegion.SHIFT;
 		int minRegionZ = Mth.floor(worldZ(0)) >> MapRegion.SHIFT;
 		int maxRegionZ = Mth.floor(worldZ(height)) >> MapRegion.SHIFT;
-		int uploads = 0;
+		int level = detailLevel();
+		uploadBudget = UPLOAD_BUDGET;
 		Matrix3x2fStack pose = graphics.pose();
 		for (int regionZ = minRegionZ; regionZ <= maxRegionZ; regionZ++) {
 			for (int regionX = minRegionX; regionX <= maxRegionX; regionX++) {
-				MapRegion region = session.region(regionX, regionZ, false);
-				if (region == null) {
-					continue;
+				int drawn = level;
+				Identifier texture = texture(regionX, regionZ, level, true);
+				for (int other = 0; texture == null && other <= RegionLod.LEVELS; other++) {
+					if (other != level) {
+						drawn = other;
+						texture = texture(regionX, regionZ, other, false);
+					}
 				}
-				boolean upload = region.isLoaded() && region.needsUpload() && uploads < MAX_UPLOADS_PER_FRAME;
-				if (upload) {
-					uploads++;
-				}
-				Identifier texture = region.texture(upload, frame);
 				if (texture == null) {
 					continue;
 				}
+				int size = RegionLod.size(drawn);
 				pose.pushMatrix();
 				pose.translate(screenX((double) regionX * MapRegion.SIZE), screenY((double) regionZ * MapRegion.SIZE));
-				pose.scale(scale);
-				graphics.blit(RenderPipelines.GUI_TEXTURED, texture, 0, 0, 0, 0, MapRegion.SIZE, MapRegion.SIZE, MapRegion.SIZE, MapRegion.SIZE);
+				pose.scale(scale * MapRegion.SIZE / size);
+				graphics.blit(RenderPipelines.GUI_TEXTURED, texture, 0, 0, 0, 0, size, size, size, size);
 				pose.popMatrix();
 			}
 		}
+	}
+
+	/**
+	 * Returns the texture of a region at a detail level, loading and uploading it within the frame's budget
+	 * when {@code request} is set, otherwise only if it is already uploaded.
+	 */
+	private @Nullable Identifier texture(int regionX, int regionZ, int level, boolean request) {
+		if (level == 0) {
+			MapRegion region = request ? session.region(regionX, regionZ, false) : session.cachedRegion(regionX, regionZ);
+			if (region == null) {
+				return null;
+			}
+			boolean upload = request && region.isLoaded() && region.needsUpload() && uploadBudget > 0;
+			if (upload) {
+				uploadBudget -= MapRegion.AREA;
+			}
+			return region.texture(upload, frame);
+		}
+		RegionLod lod = request ? session.lod(regionX, regionZ, level) : session.cachedLod(regionX, regionZ, level);
+		if (lod == null) {
+			return null;
+		}
+		boolean upload = request && lod.needsUpload() && uploadBudget > 0;
+		if (upload) {
+			uploadBudget -= lod.uploadCost();
+		}
+		return lod.texture(upload, frame);
 	}
 
 	private void drawWaypoints(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {

@@ -24,15 +24,20 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Region file format: 4-byte magic, 1-byte version, then a deflate stream holding 512*512 color bytes.
- * Since version 2 the stream continues with a byte that is 1 when tints follow, then the red, green and
- * blue planes of the tints, 512*512 bytes each. All disk access runs on one background thread so reads
- * and writes of a file stay ordered.
+ * Region file format: 4-byte magic, 1-byte version, then one deflate stream holding
+ * <ol>
+ * <li>each {@link RegionLod} level from the smallest up, as alpha, red, green and blue planes, so drawing a
+ * zoomed-out map inflates only the start of the file;</li>
+ * <li>512*512 color bytes;</li>
+ * <li>a byte that is 1 when tints follow, then the red, green and blue planes of the tints, 512*512 bytes each.</li>
+ * </ol>
+ * The levels are computed from the blocks on every write. All disk access runs on one background thread so
+ * reads and writes of a file stay ordered.
  */
 public final class RegionFiles {
 	private static final Logger LOGGER = LoggerFactory.getLogger("simple-worldmap");
 	private static final int MAGIC = 0x53574D50;
-	private static final int VERSION = 2;
+	private static final int VERSION = 1;
 	private static final Pattern NAME = Pattern.compile("r\\.(-?\\d+)\\.(-?\\d+)\\.swm");
 
 	static final ExecutorService IO = ioThread("Simple World Map IO");
@@ -107,41 +112,80 @@ public final class RegionFiles {
 		return new Data(colors, tints);
 	}
 
+	/**
+	 * Writes a region. A region still loading from disk holds only blocks sampled since, so its stored
+	 * blocks are read back and the new samples laid over them.
+	 */
+	static void save(Path file, Data snapshot, boolean partial) {
+		write(file, partial ? overlay(read(file), snapshot) : snapshot);
+	}
+
 	/** Returns the stored region, or null if the file is missing or unreadable. */
 	static @Nullable Data read(Path file) {
 		if (!Files.isRegularFile(file)) {
 			return null;
 		}
-		try (InputStream raw = Files.newInputStream(file);
-			DataInputStream header = new DataInputStream(raw)) {
-			int version = header.readInt() == MAGIC ? header.readUnsignedByte() : -1;
-			if (version < 1 || version > VERSION) {
-				LOGGER.warn("Ignoring map region with unknown format: {}", file);
+		try (DataInputStream body = openBody(file)) {
+			if (body == null) {
 				return null;
 			}
-			try (DataInputStream body = new DataInputStream(new InflaterInputStream(raw))) {
-				byte[] colors = new byte[MapRegion.AREA];
-				body.readFully(colors);
-				if (version < 2 || body.readUnsignedByte() == 0) {
-					return new Data(colors, null);
-				}
-				byte[] plane = new byte[MapRegion.AREA];
-				int[] tints = new int[MapRegion.AREA];
-				for (int shift = 16; shift >= 0; shift -= 8) {
-					body.readFully(plane);
-					for (int i = 0; i < MapRegion.AREA; i++) {
-						tints[i] |= (plane[i] & 0xFF) << shift;
-					}
-				}
-				return new Data(colors, tints);
+			for (int level = RegionLod.LEVELS; level >= 1; level--) {
+				body.skipNBytes(4L * RegionLod.size(level) * RegionLod.size(level));
 			}
+			byte[] colors = new byte[MapRegion.AREA];
+			body.readFully(colors);
+			if (body.readUnsignedByte() == 0) {
+				return new Data(colors, null);
+			}
+			int[] tints = new int[MapRegion.AREA];
+			readPlanes(body, tints, 16);
+			return new Data(colors, tints);
 		} catch (IOException e) {
 			LOGGER.warn("Could not read map region {}", file, e);
 			return null;
 		}
 	}
 
+	/** Returns one {@link RegionLod} level of a stored region, or null if the file is missing or unreadable. */
+	static int @Nullable [] readLod(Path file, int level) {
+		if (!Files.isRegularFile(file)) {
+			return null;
+		}
+		try (DataInputStream body = openBody(file)) {
+			if (body == null) {
+				return null;
+			}
+			for (int skipped = RegionLod.LEVELS; skipped > level; skipped--) {
+				body.skipNBytes(4L * RegionLod.size(skipped) * RegionLod.size(skipped));
+			}
+			int[] pixels = new int[RegionLod.size(level) * RegionLod.size(level)];
+			readPlanes(body, pixels, 24);
+			return pixels;
+		} catch (IOException e) {
+			LOGGER.warn("Could not read map region {}", file, e);
+			return null;
+		}
+	}
+
+	/** Opens the deflate stream of a region file, or returns null if the file has another format. */
+	private static @Nullable DataInputStream openBody(Path file) throws IOException {
+		InputStream raw = Files.newInputStream(file);
+		try {
+			DataInputStream header = new DataInputStream(raw);
+			if (header.readInt() != MAGIC || header.readUnsignedByte() != VERSION) {
+				LOGGER.warn("Ignoring map region with unknown format: {}", file);
+				raw.close();
+				return null;
+			}
+			return new DataInputStream(new InflaterInputStream(raw));
+		} catch (IOException e) {
+			raw.close();
+			throw e;
+		}
+	}
+
 	static void write(Path file, Data data) {
+		int[][] levels = RegionLod.downsample(data);
 		Path temp = file.resolveSibling(file.getFileName() + ".tmp");
 		try {
 			Files.createDirectories(file.getParent());
@@ -149,17 +193,14 @@ public final class RegionFiles {
 				raw.write(new byte[] {(byte) (MAGIC >>> 24), (byte) (MAGIC >>> 16), (byte) (MAGIC >>> 8), (byte) MAGIC, VERSION});
 				Deflater deflater = new Deflater(Deflater.BEST_COMPRESSION);
 				try (DeflaterOutputStream body = new DeflaterOutputStream(raw, deflater, 8192)) {
+					for (int level = RegionLod.LEVELS; level >= 1; level--) {
+						writePlanes(body, levels[level - 1], 24);
+					}
 					body.write(data.colors());
 					int[] tints = data.tints();
 					body.write(tints == null ? 0 : 1);
 					if (tints != null) {
-						byte[] plane = new byte[MapRegion.AREA];
-						for (int shift = 16; shift >= 0; shift -= 8) {
-							for (int i = 0; i < MapRegion.AREA; i++) {
-								plane[i] = (byte) (tints[i] >> shift);
-							}
-							body.write(plane);
-						}
+						writePlanes(body, tints, 16);
 					}
 				} finally {
 					deflater.end();
@@ -168,6 +209,27 @@ public final class RegionFiles {
 			moveIntoPlace(temp, file);
 		} catch (IOException e) {
 			LOGGER.warn("Could not save map region {}", file, e);
+		}
+	}
+
+	/** Reads byte planes from bit {@code topShift} down to bit 0, combining them into {@code values}. */
+	private static void readPlanes(DataInputStream body, int[] values, int topShift) throws IOException {
+		byte[] plane = new byte[values.length];
+		for (int shift = topShift; shift >= 0; shift -= 8) {
+			body.readFully(plane);
+			for (int i = 0; i < values.length; i++) {
+				values[i] |= (plane[i] & 0xFF) << shift;
+			}
+		}
+	}
+
+	private static void writePlanes(OutputStream body, int[] values, int topShift) throws IOException {
+		byte[] plane = new byte[values.length];
+		for (int shift = topShift; shift >= 0; shift -= 8) {
+			for (int i = 0; i < values.length; i++) {
+				plane[i] = (byte) (values[i] >> shift);
+			}
+			body.write(plane);
 		}
 	}
 
