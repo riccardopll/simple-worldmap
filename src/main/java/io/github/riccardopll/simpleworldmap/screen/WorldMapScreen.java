@@ -164,7 +164,7 @@ public final class WorldMapScreen extends Screen {
 		drawPlayer(graphics, self, partialTick, 0xFFFFFFFF);
 	}
 
-	/** Draws the player's head with their name in a label below it. */
+	/** Draws the player's head, with their name in a label below it for other players. */
 	private void drawPlayer(GuiGraphicsExtractor graphics, AbstractClientPlayer player, float partialTick, int border) {
 		float x = screenX(Mth.lerp(partialTick, player.xo, player.getX()));
 		float y = screenY(Mth.lerp(partialTick, player.zo, player.getZ()));
@@ -172,6 +172,9 @@ public final class WorldMapScreen extends Screen {
 			return;
 		}
 		drawHead(graphics, player, x, y, border);
+		if (player == minecraft.player) {
+			return;
+		}
 
 		Component name = player.getName();
 		int left = Math.round(x) - font.width(name) / 2 - 2;
