@@ -65,3 +65,67 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: v0.1.${{ github.run_number }}
         run: gh release create "$TAG" libs/*.jar --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+
+  modrinth:
+    needs: release
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: gradle.properties
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: simple-worldmap-0.1.${{ github.run_number }}
+          path: libs
+
+      # Prism Launcher matches installed jars to Modrinth by hash, so this must be the same file as the GitHub release.
+      # POST /v2/version ignores the environment, so it is set afterwards through v3.
+      - name: Publish to Modrinth
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          VERSION: 0.1.${{ github.run_number }}
+        run: |
+          set -euo pipefail
+
+          modrinth() {
+            local response
+            if ! response=$(curl -sS --fail-with-body -A riccardopll/simple-worldmap -H "Authorization: $MODRINTH_TOKEN" "$@"); then
+              echo "Modrinth request failed: $response" >&2
+              return 1
+            fi
+            printf '%s' "$response"
+          }
+
+          jar="libs/simple-worldmap-$VERSION.jar"
+          test -f "$jar"
+          minecraft_version=$(sed -n 's/^minecraft_version=//p' gradle.properties)
+          changelog=$(gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json body,url --jq '"\(.body)\n\n[GitHub release](\(.url))"')
+
+          data=$(jq -n --arg version "$VERSION" --arg minecraft_version "$minecraft_version" --arg changelog "$changelog" '{
+            project_id: "iMKtWA3W",
+            name: $version,
+            version_number: $version,
+            changelog: $changelog,
+            version_type: "release",
+            loaders: ["fabric"],
+            game_versions: [$minecraft_version],
+            dependencies: [{project_id: "P7dR8mSH", dependency_type: "required"}],
+            featured: false,
+            status: "listed",
+            file_parts: ["jar"],
+            primary_file: "jar"
+          }')
+
+          id=$(modrinth --form-string "data=$data" -F "jar=@$jar;type=application/java-archive" https://api.modrinth.com/v2/version | jq -r .id)
+          echo "Created Modrinth version $id"
+
+          modrinth -X PATCH -H 'Content-Type: application/json' --data '{"environment":"client_only"}' "https://api.modrinth.com/v3/version/$id" > /dev/null
+          environment=$(modrinth "https://api.modrinth.com/v3/version/$id" | jq -r .environment)
+          if [ "$environment" != client_only ]; then
+            echo "Modrinth version $id has environment $environment, expected client_only" >&2
+            exit 1
+          fi

@@ -28,7 +28,7 @@ It records the terrain you explore and shows it on a fullscreen map with waypoin
 
 ## Downloads
 
-Download the latest jar from [GitHub Releases](https://github.com/riccardopll/simple-worldmap/releases).
+Download the latest jar from [Modrinth](https://modrinth.com/mod/simple-worldmap) or [GitHub Releases](https://github.com/riccardopll/simple-worldmap/releases). Both have the same files.
 
 ## Installation
 
